@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-alpha
+  namespace: trading
+  labels:
+    app: nexus-alpha
+    version: v3.0.0
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: nexus-alpha
+  template:
+    metadata:
+      labels:
+        app: nexus-alpha
+        version: v3.0.0
+    spec:
+      serviceAccountName: nexus-alpha
+      containers:
+        - name: nexus-alpha
+          image: nexus-alpha:3.0.0
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - secretRef:
+                name: nexus-alpha-secrets
+            - configMapRef:
+                name: nexus-alpha-config
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: nexus-models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-alpha
+  namespace: trading
+spec:
+  selector:
+    app: nexus-alpha
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexus-alpha-config
+  namespace: trading
+data:
+  ENVIRONMENT: "production"
+  TRADING_MODE: "paper"
+  LOG_LEVEL: "INFO"
+  DATABASE__URL: "postgresql+asyncpg://nexus:$(DB_PASSWORD)@timescaledb:5432/nexus_alpha"
+  REDIS__URL: "redis://redis:6379/0"
+  KAFKA__BOOTSTRAP_SERVERS: "kafka:29092"
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nexus-models-pvc
+  namespace: trading
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: fast-ssd

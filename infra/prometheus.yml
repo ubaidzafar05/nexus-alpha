@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "nexus-alpha"
+    static_configs:
+      - targets: ["nexus:8000"]
+    metrics_path: /metrics
+
+  - job_name: "timescaledb"
+    static_configs:
+      - targets: ["timescaledb:9187"]
+
+  - job_name: "kafka"
+    static_configs:
+      - targets: ["kafka:9308"]
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis:9121"]
