@@ -224,8 +224,9 @@ class IntelligentExchangeRouter:
             latency_penalty = liq.latency_ms / 1000  # Normalized
             quality_bonus = liq.recent_fill_quality * 2  # Higher is better
 
-            # Depth score (deeper is better)
-            relevant_depth = liq.bid_depth if order.side == OrderSide.BUY else liq.ask_depth
+            # Depth score (deeper is better on the side we consume)
+            # BUY consumes asks; SELL consumes bids.
+            relevant_depth = liq.ask_depth if order.side == OrderSide.BUY else liq.bid_depth
             depth_score = min(relevant_depth / (order.quantity + 1e-10), 1.0)
 
             # Total score (higher is better)

@@ -143,28 +143,16 @@ class BaseIntelligenceAgent(ABC):
         return list(self._recent_reports)[-limit:]
 
     async def _llm_analyze(self, system_prompt: str, user_content: str) -> str:
-        """Call LLM for analysis/summarization."""
-        if not self._http_client or not self.llm_config.anthropic_api_key:
-            return ""
+        """
+        Call free LLM (Ollama local → Groq cloud fallback) for analysis.
+
+        Replaces the former Anthropic Claude call with zero-cost inference.
+        Uses FreeLLMClient which handles Ollama/Groq routing automatically.
+        """
         try:
-            response = await self._http_client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": self.llm_config.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": self.llm_config.model_name,
-                    "max_tokens": 1024,
-                    "system": system_prompt,
-                    "messages": [{"role": "user", "content": user_content}],
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            content_blocks = data.get("content", [])
-            return content_blocks[0].get("text", "") if content_blocks else ""
+            from nexus_alpha.intelligence.free_llm import FreeLLMClient
+            client = FreeLLMClient.from_config(self.llm_config)
+            return await client.complete(user_content, system=system_prompt)
         except Exception:
             logger.exception("llm_analysis_failed")
             return ""

@@ -11,11 +11,9 @@ that no human would think to design.
 
 from __future__ import annotations
 
-import operator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import reduce
-from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -38,7 +36,9 @@ def protected_div(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 def protected_log(a: np.ndarray) -> np.ndarray:
     """Log that handles non-positive values."""
-    return np.where(a > 1e-10, np.log(a), 0.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        result = np.where(a > 1e-10, np.log(a), 0.0)
+    return result
 
 
 def protected_sqrt(a: np.ndarray) -> np.ndarray:
@@ -204,7 +204,21 @@ TERMINALS = [
 ]
 
 # Operations grouped by arity
-UNARY_OPS = ["neg", "abs", "log", "sqrt", "sign", "clip", "ts_mean", "ts_std", "ts_rank", "ts_delta", "ts_max", "ts_min", "zscore"]
+UNARY_OPS = [
+    "neg",
+    "abs",
+    "log",
+    "sqrt",
+    "sign",
+    "clip",
+    "ts_mean",
+    "ts_std",
+    "ts_rank",
+    "ts_delta",
+    "ts_max",
+    "ts_min",
+    "zscore",
+]
 BINARY_OPS = ["add", "sub", "mul", "div", "ts_corr"]
 
 
@@ -464,7 +478,14 @@ class StrategyEvolutionEngine:
             # Compute approximate Sharpe and drawdown
             signal_norm = (signal - np.mean(signal)) / (np.std(signal) + 1e-10)
             strat_returns = signal_norm[:n-1] * forward_returns.values[1:n]
-            sharpe = np.mean(strat_returns) / (np.std(strat_returns) + 1e-10) * np.sqrt(252) if len(strat_returns) > 0 else 0
+            if len(strat_returns) > 0:
+                sharpe = (
+                    np.mean(strat_returns)
+                    / (np.std(strat_returns) + 1e-10)
+                    * np.sqrt(252)
+                )
+            else:
+                sharpe = 0
             cumulative = np.cumsum(strat_returns)
             peak = np.maximum.accumulate(cumulative) if len(cumulative) > 0 else np.array([0])
             dd = peak - cumulative

@@ -1,0 +1,53 @@
+project:
+  md_source: "/absolute/path/to/NEXUS_ALPHA_Ultimate_Trading_System.md"
+  environment: "production"
+  timezone: "UTC"
+
+exchanges:
+  enabled:
+    - "binance"
+    - "bybit"
+    - "kraken"
+    - "hyperliquid"
+  live_capital_enabled: false
+
+infrastructure:
+  kafka_bootstrap_servers: "kafka-prod:9092"
+  timescaledb_url_secret_ref: "vault://nexus/timescaledb_url"
+  redis_url: "redis://redis-prod:6379/0"
+  kubernetes_namespace: "nexus-alpha"
+  prometheus_url: "http://prometheus.monitoring.svc:9090"
+  grafana_url: "http://grafana.monitoring.svc:3000"
+
+credentials:
+  binance_api_key_set: false
+  binance_api_secret_set: false
+  bybit_api_key_set: false
+  bybit_api_secret_set: false
+  kraken_api_key_set: false
+  kraken_api_secret_set: false
+  anthropic_api_key_set: false
+  openai_api_key_set: false
+  cryptopanic_api_token_set: false
+  vault_token_set: false
+
+policy:
+  max_single_position_pct: 0.20
+  max_portfolio_drawdown_pct: 0.15
+  max_daily_loss_pct: 0.05
+  approved_by: ""
+  approval_date: ""
+
+slo:
+  tick_latency_p99_ms: 10
+  feature_staleness_seconds: 300
+  quality_failures_per_hour: 10
+  end_to_end_latency_ms: 200
+
+rollout:
+  stage_owners:
+    paper: ""
+    micro_live: ""
+    small_live: ""
+    production: ""
+  human_signoff_required: true

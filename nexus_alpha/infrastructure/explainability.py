@@ -9,8 +9,7 @@ Provides interpretable explanations for every trade decision:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -19,6 +18,14 @@ from nexus_alpha.logging import get_logger
 from nexus_alpha.types import Signal, TradeExplanation
 
 logger = get_logger(__name__)
+
+
+def _as_scalar(value: Any) -> float:
+    """Normalize model prediction outputs to a scalar float."""
+    arr = np.asarray(value, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return float(arr[0])
 
 
 @dataclass
@@ -43,6 +50,7 @@ class TreeSHAPExplainer:
         self.predict_fn = model_predict_fn
         self.feature_names = feature_names or []
         self._background_data: np.ndarray | None = None
+        self._kernel_explainer: Any | None = None
 
     def set_background(self, data: np.ndarray) -> None:
         """Set background data for SHAP baseline computation."""
@@ -55,13 +63,14 @@ class TreeSHAPExplainer:
         """
         if self.predict_fn is None or self._background_data is None:
             return self._mock_explanations(instance)
+        shap_attributions = self._explain_with_shap(instance)
+        if shap_attributions is not None:
+            return shap_attributions
 
         n_features = instance.shape[-1]
         baseline_pred = float(np.mean([
-            self.predict_fn(bg.reshape(1, -1)) for bg in self._background_data[:50]
+            _as_scalar(self.predict_fn(bg.reshape(1, -1))) for bg in self._background_data[:50]
         ]))
-        instance_pred = float(self.predict_fn(instance.reshape(1, -1)))
-
         # Permutation SHAP approximation
         shap_values = np.zeros(n_features)
         n_permutations = min(100, n_features * 10)
@@ -79,13 +88,13 @@ class TreeSHAPExplainer:
                 x_with = bg_sample.copy()
                 for k in range(j + 1):
                     x_with[perm[k]] = instance[perm[k]]
-                pred_with = float(self.predict_fn(x_with.reshape(1, -1)))
+                pred_with = _as_scalar(self.predict_fn(x_with.reshape(1, -1)))
 
                 # Without feature
                 x_without = bg_sample.copy()
                 for k in range(j):
                     x_without[perm[k]] = instance[perm[k]]
-                pred_without = float(self.predict_fn(x_without.reshape(1, -1)))
+                pred_without = _as_scalar(self.predict_fn(x_without.reshape(1, -1)))
 
                 shap_values[feat_idx] += (pred_with - pred_without) / n_permutations
 
@@ -103,12 +112,54 @@ class TreeSHAPExplainer:
         attributions.sort(key=lambda a: abs(a.shap_value), reverse=True)
         return attributions
 
+    def _explain_with_shap(self, instance: np.ndarray) -> list[FeatureAttribution] | None:
+        try:
+            import shap
+        except ImportError:
+            return None
+
+        if self._background_data is None or self.predict_fn is None:
+            return None
+
+        if self._kernel_explainer is None:
+            background = self._background_data[: min(100, len(self._background_data))]
+            self._kernel_explainer = shap.KernelExplainer(self.predict_fn, background)
+
+        try:
+            shap_values = self._kernel_explainer.shap_values(instance.reshape(1, -1), nsamples=100)
+            values = np.asarray(shap_values, dtype=np.float64).reshape(-1)
+            baseline = float(np.asarray(self._kernel_explainer.expected_value).reshape(-1)[0])
+        except Exception:
+            return None
+
+        attributions = []
+        for idx, value in enumerate(values):
+            feature_name = (
+                self.feature_names[idx]
+                if idx < len(self.feature_names)
+                else f"feature_{idx}"
+            )
+            attributions.append(
+                FeatureAttribution(
+                    feature_name=feature_name,
+                    shap_value=float(value),
+                    feature_value=float(instance[idx]),
+                    baseline_value=baseline,
+                )
+            )
+        attributions.sort(key=lambda item: abs(item.shap_value), reverse=True)
+        return attributions
+
     def _mock_explanations(self, instance: np.ndarray) -> list[FeatureAttribution]:
         """Generate placeholder explanations when model is not available."""
         n_features = instance.shape[-1] if instance.ndim > 0 else 1
         return [
             FeatureAttribution(
-                feature_name=self.feature_names[i] if i < len(self.feature_names) else f"feature_{i}",
+                feature_name=(
+                    self.feature_names[i]
+                    if i < len(self.feature_names)
+                    else f"feature_{i}"
+                ),
                 shap_value=0.0,
                 feature_value=float(instance[i]) if i < len(instance) else 0.0,
                 baseline_value=0.0,
@@ -211,7 +262,10 @@ class TradeExplainabilityEngine:
 
         lines = [
             f"Trade Decision: {direction.upper()} {signal.symbol}",
-            f"Signal source: {signal.source} (strength: {strength:.2f}, confidence: {confidence:.2f})",
+            (
+                f"Signal source: {signal.source} "
+                f"(strength: {strength:.2f}, confidence: {confidence:.2f})"
+            ),
             "",
             "Top contributing factors:",
         ]

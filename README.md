@@ -23,3 +23,12 @@ This codebase is not production-ready as-is. Several subsystems are scaffolds or
 ## Verification
 
 The package source under `nexus_alpha/` compiles with Python 3.11 in the managed environment.
+
+## Production Intake
+
+1. Copy `config/production_inputs.example.yaml` to `config/production_inputs.yaml`.
+2. Fill required ownership/policy/infrastructure fields.
+3. Run preflight:
+   - `python scripts/validate_production_readiness.py`
+   - `python scripts/validate_production_readiness.py --check-network`
+4. Follow `docs/runbooks/production_readiness.md`.

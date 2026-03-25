@@ -13,8 +13,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import sys
-from typing import Any
 
 import click
 
@@ -31,11 +29,12 @@ logger = get_logger(__name__)
 def cli(ctx: click.Context, env_file: str, log_level: str | None) -> None:
     """NEXUS-ALPHA v3.0 — Autonomous Crypto Trading System."""
     ctx.ensure_object(dict)
-    config = load_config()
+    config = load_config(env_file=env_file)
     if log_level:
         config.log_level = log_level
     setup_logging(config.log_level)
     ctx.obj["config"] = config
+    ctx.obj["env_file"] = env_file
 
 
 @cli.command()
@@ -124,6 +123,60 @@ def health(ctx: click.Context) -> None:
 
 
 @cli.command()
+@click.option("--host", default="0.0.0.0", help="Host interface")
+@click.option("--port", default=8080, type=int, help="Port")
+def api(host: str, port: int) -> None:
+    """Run health/readiness API surface for infrastructure checks."""
+    import uvicorn
+
+    uvicorn.run("nexus_alpha.api.health:app", host=host, port=port, log_level="info")
+
+
+@cli.command("materialize-features")
+@click.option("--once", is_flag=True, help="Run one worker cycle")
+@click.option("--cycles", default=60, type=int, help="Max cycles in loop mode")
+@click.option("--interval-seconds", default=1.0, type=float, help="Delay between cycles")
+@click.option("--prefer-kafka/--no-prefer-kafka", default=True, help="Prefer Kafka transport")
+@click.option("--seed-demo-ticks", default=0, type=int, help="Publish demo ticks before processing")
+@click.pass_context
+def materialize_features(
+    ctx: click.Context,
+    once: bool,
+    cycles: int,
+    interval_seconds: float,
+    prefer_kafka: bool,
+    seed_demo_ticks: int,
+) -> None:
+    """Consume tick events and emit feature snapshots."""
+    from nexus_alpha.data.streaming import FeatureStreamingLoop
+
+    config: NexusConfig = ctx.obj["config"]
+    loop = FeatureStreamingLoop.from_config(config, prefer_kafka=prefer_kafka)
+
+    if seed_demo_ticks > 0:
+        loop.seed_demo_ticks(n=seed_demo_ticks)
+
+    if once:
+        stats = loop.run_cycle()
+        slo_ok = loop.metrics()["slo"]["ok"]
+        click.echo(
+            "Feature worker run complete: "
+            f"{stats.emitted_snapshots} snapshots emitted ({loop.mode}) "
+            f"[slo_ok={slo_ok}]"
+        )
+        return
+
+    metrics = loop.run_for(cycles=cycles, interval_seconds=interval_seconds)
+    worker = metrics["worker"]
+    slo_ok = metrics["slo"]["ok"]
+    click.echo(
+        "Feature worker loop complete: "
+        f"{worker['emitted_snapshots']} snapshots from {worker['processed_ticks']} ticks"
+        f" ({loop.mode}) [slo_ok={slo_ok}]"
+    )
+
+
+@cli.command()
 @click.option("--base-price", default=65000.0, help="Base price for simulations")
 @click.pass_context
 def adversarial(ctx: click.Context, base_price: float) -> None:
@@ -167,7 +220,7 @@ async def _run_system(config: NexusConfig) -> None:
 
     # Initialize
     circuit_breaker = CircuitBreakerSystem(risk_config=config.risk)
-    regime_oracle = RegimeOracle(n_regimes=5, window_size=200)
+    regime_oracle = RegimeOracle(n_regimes=5, lookback_window=200)
     world_model = WorldModel(config.world_model)
     signal_engine = SignalFusionEngine()
     signal_engine.register_defaults()

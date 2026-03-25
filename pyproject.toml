@@ -79,9 +79,28 @@ dependencies = [
     # === Crypto Exchange Clients ===
     "ccxt>=4.3.0",
 
-    # === NLP / LLM ===
-    "anthropic>=0.25.0",
-    "tiktoken>=0.7.0",
+    # === NLP / LLM — Free Stack ===
+    # Ollama client (OpenAI-compatible local inference)
+    "openai>=1.30.0",           # Works as Ollama client via base_url override
+    # Groq free-tier cloud fallback (6k req/day, Llama-3.3-70b free)
+    "groq>=0.9.0",
+    # FinBERT + local embeddings via HuggingFace
+    "transformers>=4.41.0",
+    "sentence-transformers>=3.0.0",
+    # Free web intelligence (replaces OpenClaw paid backend)
+    "crawl4ai>=0.3.0",
+    # Free news sources
+    "feedparser>=6.0.0",
+    "newspaper3k>=0.2.8",
+    "praw>=7.7.0",              # Reddit API (60 req/min free)
+    # Free alerting (replaces PagerDuty)
+    "python-telegram-bot>=21.0",
+    # Free vector DB client
+    "qdrant-client>=1.9.0",
+    # Job scheduling for intelligence agents
+    "apscheduler>=3.10.0",
+    # Free on-chain / sentiment data
+    "pycoingecko>=3.1.0",
 
     # === Utilities ===
     "click>=8.1.0",
@@ -113,6 +132,10 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "B017", "SLF001"]
+"tests/integration/conftest.py" = ["S603", "S607"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
@@ -121,3 +144,6 @@ warn_return_any = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "kafka_integration: requires docker compose kafka stack and confluent_kafka",
+]

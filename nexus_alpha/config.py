@@ -41,11 +41,49 @@ class KrakenConfig(BaseSettings):
 
 
 class LLMConfig(BaseSettings):
+    """Free LLM stack: Ollama (local) primary, Groq free-tier cloud fallback."""
+
     model_config = SettingsConfigDict(env_prefix="")
+
+    # Ollama — local LLM server (runs on Oracle Cloud free VM or localhost)
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_primary_model: str = "qwen3:8b"          # Best reasoning in 8B class
+    ollama_fast_model: str = "mistral:7b"            # Fast structured output
+    ollama_reasoning_model: str = "deepseek-r1:8b"  # Debate / cross-validation
+    ollama_embed_model: str = "nomic-embed-text"     # Free local embeddings
+
+    # Groq — free cloud fallback (6,000 req/day, 131k TPM, Llama-3.3-70b)
+    groq_api_key: SecretStr = SecretStr("")
+    groq_model: str = "llama-3.3-70b-versatile"     # Free 70B model via Groq
+
+    # FinBERT — specialized finance sentiment (110M params, CPU-fast, Apache 2.0)
+    finbert_enabled: bool = True
+    finbert_model_name: str = "ProsusAI/finbert"
+
+    # Legacy field aliases — kept for backwards compat with any code that reads them
+    primary_model: str = "qwen3:8b"
+    fallback_model: str = "llama-3.3-70b-versatile"
+
+    # These are intentionally empty — no paid keys required
     anthropic_api_key: SecretStr = SecretStr("")
     openai_api_key: SecretStr = SecretStr("")
-    primary_model: str = "claude-sonnet-4-20250514"
-    fallback_model: str = "gpt-4o"
+
+    @property
+    def model_name(self) -> str:
+        """Canonical primary model accessor used across subsystems.
+
+        Returns the explicitly set primary_model if overridden, otherwise the
+        Ollama primary model (default free-stack behaviour).
+        """
+        # primary_model default matches ollama_primary_model; if they differ
+        # it means the caller explicitly overrode primary_model — respect that.
+        if self.primary_model != self.ollama_primary_model:
+            return self.primary_model
+        return self.ollama_primary_model
+
+    @property
+    def has_groq(self) -> bool:
+        return bool(self.groq_api_key.get_secret_value())
 
 
 class DatabaseConfig(BaseSettings):
@@ -63,6 +101,17 @@ class KafkaConfig(BaseSettings):
     tick_topic: str = "market.ticks"
     signal_topic: str = "signals.raw"
     order_topic: str = "orders.submitted"
+
+
+class DataQualityConfig(BaseSettings):
+    """Phase 0 quality + observability thresholds from roadmap targets."""
+
+    model_config = SettingsConfigDict(env_prefix="DATA_")
+    max_future_skew_seconds: float = 1.0
+    max_quality_failures_per_hour: int = 10
+    max_tick_latency_p99_ms: float = 10.0
+    max_feature_staleness_seconds: float = 300.0
+    max_quality_check_p99_ms: float = 2.0
 
 
 class WorldModelConfig(BaseSettings):
@@ -146,6 +195,7 @@ class NexusConfig(BaseSettings):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     kafka: KafkaConfig = Field(default_factory=KafkaConfig)
+    data_quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
     world_model: WorldModelConfig = Field(default_factory=WorldModelConfig)
     rl_agent: RLAgentConfig = Field(default_factory=RLAgentConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
@@ -160,6 +210,6 @@ class NexusConfig(BaseSettings):
         return self.environment == Environment.PRODUCTION
 
 
-def load_config() -> NexusConfig:
+def load_config(env_file: str = ".env") -> NexusConfig:
     """Load configuration from environment. Call once at startup."""
-    return NexusConfig()
+    return NexusConfig(_env_file=env_file)

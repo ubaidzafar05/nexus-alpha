@@ -122,14 +122,25 @@ class ExchangeHealthCheck(BaseHealthCheck):
 
     def __init__(self, exchange_name: str, base_url: str):
         super().__init__(f"exchange_{exchange_name}")
+        self.exchange_name = exchange_name.lower()
         self.base_url = base_url
+
+    def _health_path(self) -> str:
+        """Return a lightweight endpoint path based on exchange flavor."""
+        if "kraken" in self.exchange_name:
+            return "/0/public/SystemStatus"
+        if "bybit" in self.exchange_name:
+            return "/v5/market/time"
+        if "hyperliquid" in self.exchange_name:
+            return "/info"
+        return "/api/v3/ping"
 
     async def check(self) -> HealthCheckResult:
         start = time.monotonic()
         try:
             import httpx
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.get(f"{self.base_url}/api/v3/ping")
+                resp = await client.get(f"{self.base_url}{self._health_path()}")
                 latency = (time.monotonic() - start) * 1000
                 return HealthCheckResult(
                     component=self.component_name,
