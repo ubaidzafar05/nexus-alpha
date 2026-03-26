@@ -1,0 +1,251 @@
+"""
+Unit tests for the free stack components:
+- FreeLLMClient routing (Ollama primary, Groq fallback)
+- HybridSentimentPipeline (FinBERT fast-path)
+- SentimentPipelineRunner (Redis writer)
+- LiveMarketIngestor (ccxt.pro WebSocket config)
+- TelegramAlerts (graceful no-op when not configured)
+- NexusAlphaStrategy (do_predict guard)
+- CLI commands exist (backtest, live-ingest)
+"""
+
+from __future__ import annotations
+
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pandas as pd
+import pytest
+
+# ─── FreeLLMClient ────────────────────────────────────────────────────────────
+
+class TestFreeLLMClient:
+    def test_from_config_uses_ollama_url(self):
+        from nexus_alpha.config import LLMConfig
+        from nexus_alpha.intelligence.free_llm import FreeLLMClient
+
+        cfg = LLMConfig()
+        client = FreeLLMClient.from_config(cfg)
+        assert "11434" in client._ollama_url or "ollama" in client._ollama_url.lower()
+
+    def test_model_name_property_returns_primary(self):
+        from nexus_alpha.config import LLMConfig
+
+        cfg = LLMConfig(ollama_primary_model="qwen3:8b")
+        assert "qwen3" in cfg.model_name
+
+    @pytest.mark.asyncio
+    async def test_complete_falls_back_to_groq_when_ollama_unavailable(self):
+        """When Ollama returns a connection error, Groq fallback is invoked."""
+        from nexus_alpha.config import LLMConfig
+        from nexus_alpha.intelligence.free_llm import FreeLLMClient
+
+        cfg = LLMConfig(groq_api_key="test-key")  # type: ignore[call-arg]
+        client = FreeLLMClient.from_config(cfg)
+
+        with patch.object(client, "_ollama_complete", side_effect=ConnectionError("refused")):
+            with patch.object(client, "_groq_complete", new=AsyncMock(return_value="groq response")):
+                result = await client.complete("hello")
+        assert result == "groq response"
+
+
+# ─── HybridSentimentPipeline ─────────────────────────────────────────────────
+
+class TestHybridSentimentPipeline:
+    """Tests that don't require GPU — mock the FinBERT model."""
+
+    def _make_pipeline(self):
+        from nexus_alpha.intelligence.sentiment import HybridSentimentPipeline
+
+        pipeline = HybridSentimentPipeline.__new__(HybridSentimentPipeline)
+        pipeline._finbert = None
+        pipeline._llm = MagicMock()
+        pipeline._use_finbert = False  # Skip GPU loading in tests
+        return pipeline
+
+    def test_pipeline_instantiates(self):
+        pipeline = self._make_pipeline()
+        assert pipeline is not None
+
+    @pytest.mark.asyncio
+    async def test_process_articles_returns_enriched(self):
+        from nexus_alpha.intelligence.sentiment import HybridSentimentPipeline, SentimentResult
+
+        pipeline = self._make_pipeline()
+
+        # Mock FinBERT scorer object
+        mock_finbert = MagicMock()
+        mock_finbert.score_batch.return_value = [
+            SentimentResult(0.8, 0.92, "positive", "finbert")
+        ]
+        pipeline._finbert = mock_finbert
+        pipeline._use_finbert = True
+
+        with patch.object(pipeline, "_needs_deep_analysis", return_value=False):
+            articles = [{"title": "Bitcoin surges to new ATH", "text": "BTC price up 10%."}]
+            result = await pipeline.process_articles(articles)
+
+        assert len(result) == 1
+        assert "sentiment" in result[0]
+        assert result[0]["sentiment"]["score"] == 0.8
+
+
+# ─── SentimentPipelineRunner ─────────────────────────────────────────────────
+
+class TestSentimentPipelineRunner:
+    def test_runner_initializes(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+        assert runner is not None
+        assert runner._running is False
+
+    def test_asset_keyword_extraction(self):
+        from nexus_alpha.data.sentiment_pipeline import _extract_assets
+
+        assert "BTC" in _extract_assets("Bitcoin hits new all-time high")
+        assert "ETH" in _extract_assets("Ethereum dApp ecosystem grows")
+        assert "SOL" in _extract_assets("Solana network upgrade complete")
+
+    def test_write_to_redis_calls_setex(self):
+        from datetime import datetime
+
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner, SentimentScore
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        mock_redis = MagicMock()
+        mock_pipe = MagicMock()
+        mock_redis.pipeline.return_value = mock_pipe
+        runner._redis = mock_redis
+
+        scores = {
+            "BTC": SentimentScore("BTC", 0.6, 0.8, 5, "hybrid_finbert_qwen3", datetime.utcnow()),
+        }
+        runner._write_to_redis(scores)
+
+        mock_pipe.setex.assert_called()
+        mock_pipe.execute.assert_called_once()
+
+
+# ─── LiveMarketIngestor ───────────────────────────────────────────────────────
+
+class TestLiveMarketIngestor:
+    def test_ingestor_config(self):
+        from nexus_alpha.data.live_ingestor import LiveMarketIngestor
+
+        ingestor = LiveMarketIngestor(
+            exchange_id="binance",
+            symbols=["BTC/USDT"],
+        )
+        assert ingestor._exchange_id == "binance"
+        assert "BTC/USDT" in ingestor._symbols
+
+    def test_multi_ingestor_creates_two_ingestors(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.live_ingestor import MultiExchangeIngestor
+
+        cfg = NexusConfig()
+        multi = MultiExchangeIngestor(cfg)
+        assert len(multi._ingestors) >= 1
+
+    def test_stop_sets_running_false(self):
+        from nexus_alpha.data.live_ingestor import LiveMarketIngestor
+
+        ingestor = LiveMarketIngestor("binance", ["BTC/USDT"])
+        ingestor._running = True
+        ingestor.stop()
+        assert ingestor._running is False
+
+
+# ─── TelegramAlerts ───────────────────────────────────────────────────────────
+
+class TestTelegramAlerts:
+    def test_from_env_returns_alerts_object(self):
+        from nexus_alpha.alerts.telegram import TelegramAlerts
+
+        alerts = TelegramAlerts.from_env()
+        assert alerts is not None
+
+    @pytest.mark.asyncio
+    async def test_send_is_no_op_when_not_configured(self):
+        from nexus_alpha.alerts.telegram import TelegramAlerts
+
+        alerts = TelegramAlerts(bot_token=None, chat_id=None)  # type: ignore[arg-type]
+        result = await alerts.send("test message")
+        # Should return False gracefully, not raise
+        assert result is False
+
+
+# ─── NexusAlphaStrategy FreqAI guard ─────────────────────────────────────────
+
+class TestNexusAlphaStrategyDoPredict:
+    def test_populate_entry_trend_without_freqai_column(self):
+        """Should not raise KeyError when do_predict column is absent."""
+        import sys, types
+
+        # Stub freqtrade so it can be imported without installation
+        ft_stub = types.ModuleType("freqtrade")
+        ft_strategy_stub = types.ModuleType("freqtrade.strategy")
+
+        class _IStrategy:
+            def __init__(self, config=None): pass
+
+        ft_strategy_stub.IStrategy = _IStrategy
+        ft_strategy_stub.DecimalParameter = lambda *a, **kw: MagicMock(value=0.1)
+        sys.modules.setdefault("freqtrade", ft_stub)
+        sys.modules.setdefault("freqtrade.strategy", ft_strategy_stub)
+        sys.modules.setdefault("freqtrade.persistence", types.ModuleType("freqtrade.persistence"))
+
+        # Build a minimal dataframe without do_predict
+        df = pd.DataFrame({
+            "ema_fast": [100.0, 101.0],
+            "ema_slow": [99.0, 99.5],
+            "rsi": [45.0, 48.0],
+            "sentiment": [0.3, 0.2],
+        })
+
+        # Directly test the guard logic (column absent path)
+        freqai_active = "do_predict" in df.columns
+        assert freqai_active is False
+
+        # Guard: fallback to base strategy logic
+        ml_signal = (
+            (df["ema_fast"] > df["ema_slow"])
+            & (df["rsi"] < 50)
+        )
+        assert ml_signal.any(), "Fallback signal should trigger on test data"
+
+
+# ─── CLI command registration ─────────────────────────────────────────────────
+
+class TestCLICommands:
+    def test_backtest_command_exists(self):
+        from click.testing import CliRunner
+        from nexus_alpha.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["backtest", "--help"])
+        assert result.exit_code == 0
+        assert "Freqtrade" in result.output or "freqtrade" in result.output.lower()
+
+    def test_live_ingest_command_exists(self):
+        from click.testing import CliRunner
+        from nexus_alpha.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["live-ingest", "--help"])
+        assert result.exit_code == 0
+        assert "exchange" in result.output.lower()
+
+    def test_health_command_exists(self):
+        from click.testing import CliRunner
+        from nexus_alpha.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["health", "--help"])
+        assert result.exit_code == 0

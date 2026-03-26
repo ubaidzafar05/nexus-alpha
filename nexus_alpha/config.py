@@ -91,7 +91,8 @@ class DatabaseConfig(BaseSettings):
     timescaledb_url: SecretStr = SecretStr(
         "postgresql+asyncpg://nexus:changeme@localhost:5432/nexus_alpha"
     )
-    redis_url: str = "redis://localhost:6379/0"
+    # Format: redis://:PASSWORD@host:port/db  (password required — docker-compose sets REDIS_PASSWORD)
+    redis_url: str = "redis://:nexus_dev@localhost:6379/0"
 
 
 class KafkaConfig(BaseSettings):

@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import os
 
 import click
 
@@ -66,6 +67,9 @@ def paper(ctx: click.Context) -> None:
 @click.option("--end-date", required=True, help="Backtest end date (YYYY-MM-DD)")
 @click.option("--initial-capital", default=100000.0, help="Starting capital")
 @click.option("--symbols", default="BTCUSDT,ETHUSDT", help="Comma-separated symbols")
+@click.option("--strategy", default="NexusAlphaStrategy", help="Freqtrade strategy class")
+@click.option("--timeframe", default="1h", help="Candle timeframe (e.g. 1h, 4h, 1d)")
+@click.option("--download-data", is_flag=True, default=False, help="Download OHLCV data first")
 @click.pass_context
 def backtest(
     ctx: click.Context,
@@ -73,21 +77,42 @@ def backtest(
     end_date: str,
     initial_capital: float,
     symbols: str,
+    strategy: str,
+    timeframe: str,
+    download_data: bool,
 ) -> None:
-    """Run backtesting engine."""
-    config: NexusConfig = ctx.obj["config"]
-    symbol_list = [s.strip() for s in symbols.split(",")]
-    logger.info(
-        "backtest_starting",
-        start_date=start_date,
-        end_date=end_date,
-        capital=initial_capital,
-        symbols=symbol_list,
-    )
-    click.echo(f"Backtest: {start_date} → {end_date}")
-    click.echo(f"Capital: ${initial_capital:,.0f}")
-    click.echo(f"Symbols: {', '.join(symbol_list)}")
-    click.echo("Backtest engine not yet fully wired — all modules are ready.")
+    """Run backtesting via Freqtrade + NexusAlphaStrategy."""
+    import subprocess
+    import shutil
+
+    ft = shutil.which("freqtrade")
+    if ft is None:
+        click.echo("❌  Freqtrade not found. Install it or use the Docker service.")
+        click.echo("    docker-compose run --rm freqtrade backtesting ...")
+        raise SystemExit(1)
+
+    config_path = "freqtrade/config/config.json"
+
+    if download_data:
+        click.echo(f"📥  Downloading {timeframe} OHLCV data ({start_date} → {end_date})...")
+        dl_cmd = [
+            ft, "download-data",
+            "--config", config_path,
+            "--timeframe", timeframe,
+            "--timerange", f"{start_date.replace('-', '')}-{end_date.replace('-', '')}",
+        ]
+        subprocess.run(dl_cmd, check=True)
+
+    click.echo(f"🔬  Backtesting {strategy}: {start_date} → {end_date}")
+    bt_cmd = [
+        ft, "backtesting",
+        "--config", config_path,
+        "--strategy", strategy,
+        "--timerange", f"{start_date.replace('-', '')}-{end_date.replace('-', '')}",
+        "--starting-balance", str(int(initial_capital)),
+        "--timeframe", timeframe,
+    ]
+    subprocess.run(bt_cmd, check=True)
 
 
 @cli.command()
@@ -203,54 +228,140 @@ def adversarial(ctx: click.Context, base_price: float) -> None:
         click.echo(f"  {status} {s['name']}: NAV {s['nav_impact']}, DD {s['max_dd']}, CB L{s['cb_level']}")
 
 
+# ─── Live Ingest Command ─────────────────────────────────────────────────────
+
+@cli.command("live-ingest")
+@click.option("--exchange", default="binance", help="Exchange ID (binance, bybit, kraken...)")
+@click.option("--symbols", default="BTC/USDT,ETH/USDT", help="Comma-separated symbols")
+@click.option("--multi/--single", default=True, help="Multi-exchange (Binance+Bybit) or single")
+@click.pass_context
+def live_ingest(ctx: click.Context, exchange: str, symbols: str, multi: bool) -> None:
+    """Start the live WebSocket market data ingestor (ccxt.pro → Kafka)."""
+    from nexus_alpha.data.live_ingestor import LiveMarketIngestor, MultiExchangeIngestor
+
+    config: NexusConfig = ctx.obj["config"]
+    symbol_list = [s.strip() for s in symbols.split(",")]
+
+    async def _run() -> None:
+        if multi:
+            ingestor = MultiExchangeIngestor(config)
+        else:
+            ingestor = LiveMarketIngestor(  # type: ignore[assignment]
+                exchange_id=exchange,
+                symbols=symbol_list,
+                config=config,
+            )
+        click.echo(f"📡  Live ingestor starting — {'multi-exchange' if multi else exchange}")
+        click.echo(f"    Symbols: {symbol_list}")
+        click.echo(f"    Kafka:   {config.kafka.bootstrap_servers}")
+        await ingestor.run()
+
+    asyncio.run(_run())
+
+
 # ─── System Runner ────────────────────────────────────────────────────────────
 
 async def _run_system(config: NexusConfig) -> None:
-    """Initialize and run all system components."""
+    """
+    Initialize and run all NEXUS-ALPHA system components.
+
+    Startup order (dependency-safe):
+    1. Infrastructure health check
+    2. Regime oracle + World model
+    3. Signal engine
+    4. Circuit breaker
+    5. Live data ingestor (ccxt WebSocket → Kafka)
+    6. Sentiment pipeline (RSS → FinBERT → Redis)
+    7. Intelligence agents (Crawl4AI, RSS, DeFiLlama, SEC)
+    8. Portfolio optimizer
+    9. Agent tournament
+    10. System watchdog
+    11. Telegram health notification
+    """
     logger.info("initializing_components")
 
-    # Import components
-    from nexus_alpha.agents.tournament import TournamentOrchestrator
+    # ── Core intelligence ─────────────────────────────────────────────────────
     from nexus_alpha.core.regime_oracle import RegimeOracle
     from nexus_alpha.core.world_model import WorldModel
-    from nexus_alpha.infrastructure.self_healing import SystemWatchdog
-    from nexus_alpha.intelligence.openclaw_agents import OpenClawNetwork
-    from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
     from nexus_alpha.signals.signal_engine import SignalFusionEngine
+    from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
+    from nexus_alpha.agents.tournament import TournamentOrchestrator
+    from nexus_alpha.intelligence.openclaw_agents import OpenClawNetwork
+    from nexus_alpha.intelligence.crawl4ai_agents import FreeIntelligenceOrchestrator
+    from nexus_alpha.infrastructure.self_healing import SystemWatchdog
+    from nexus_alpha.data.live_ingestor import MultiExchangeIngestor
+    from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+    from nexus_alpha.alerts.telegram import TelegramAlerts
 
-    # Initialize
+    # ── Alerts first — so we can notify on startup/failure ───────────────────
+    alerts = TelegramAlerts.from_env()
+
+    # ── Core modules ──────────────────────────────────────────────────────────
     circuit_breaker = CircuitBreakerSystem(risk_config=config.risk)
     regime_oracle = RegimeOracle(n_regimes=5, lookback_window=200)
     world_model = WorldModel(config.world_model)
     signal_engine = SignalFusionEngine()
     signal_engine.register_defaults()
+
+    # ── Intelligence network ──────────────────────────────────────────────────
+    # Primary: free agents (RSS, CryptoPanic, DeFiLlama, SEC EDGAR)
+    free_intel = FreeIntelligenceOrchestrator(
+        cryptopanic_token=os.getenv("CRYPTOPANIC_API_TOKEN", ""),
+        ollama_base_url=config.llm.ollama_base_url,
+    )
+    # Secondary: OpenClaw network (uses free LLM backend)
     openclaw = OpenClawNetwork(config=config)
+
+    # ── Data pipelines ────────────────────────────────────────────────────────
+    ingestor = MultiExchangeIngestor(config)
+    sentiment_runner = SentimentPipelineRunner(config)
+
+    # ── Agent tournament ──────────────────────────────────────────────────────
+    tournament = TournamentOrchestrator(config.tournament)
+
+    # ── System watchdog ───────────────────────────────────────────────────────
     watchdog = SystemWatchdog(check_interval_seconds=30.0)
 
     logger.info(
         "system_initialized",
         trading_mode=config.trading_mode.value,
         circuit_breaker="enabled" if config.risk.circuit_breaker_enabled else "disabled",
+        llm_backend=config.llm.ollama_base_url,
     )
 
-    # Start subsystems
+    # ── Start all subsystems ──────────────────────────────────────────────────
     tasks = [
-        asyncio.create_task(openclaw.start_all()),
-        asyncio.create_task(watchdog.run()),
+        asyncio.create_task(ingestor.run(), name="live_ingestor"),
+        asyncio.create_task(sentiment_runner.run(), name="sentiment_pipeline"),
+        asyncio.create_task(openclaw.start_all(), name="openclaw"),
+        asyncio.create_task(watchdog.run(), name="watchdog"),
     ]
 
-    click.echo("NEXUS-ALPHA v3.0 is running.")
-    click.echo(f"Mode: {config.trading_mode.value}")
-    click.echo("Press Ctrl+C to stop.")
+    click.echo("╔══════════════════════════════════════════╗")
+    click.echo("║   NEXUS-ALPHA v3.0 — Free Edition        ║")
+    click.echo("╚══════════════════════════════════════════╝")
+    click.echo(f"  Mode:     {config.trading_mode.value}")
+    click.echo(f"  LLM:      Ollama ({config.llm.ollama_primary_model})")
+    click.echo(f"  Kafka:    {config.kafka.bootstrap_servers}")
+    click.echo(f"  Monthly cost: $0.00")
+    click.echo("  Press Ctrl+C to stop.\n")
+
+    # Notify Telegram on startup
+    await alerts.send(
+        f"✅ NEXUS-ALPHA started\nMode: `{config.trading_mode.value}`\nLLM: `{config.llm.ollama_primary_model}`",
+    )
 
     try:
         await asyncio.gather(*tasks)
     except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("shutdown_requested")
+        sentiment_runner.stop()
+        ingestor.stop()
         await openclaw.stop_all()
         await watchdog.stop()
         for t in tasks:
             t.cancel()
+        await alerts.send("🛑 NEXUS-ALPHA stopped (manual shutdown)")
         logger.info("nexus_stopped")
 
 

@@ -13,7 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-import httpx
 import orjson
 
 from nexus_alpha.config import LLMConfig
@@ -134,12 +133,6 @@ class AgentDebateProtocol:
 
     def __init__(self, llm_config: LLMConfig | None = None):
         self.config = llm_config or LLMConfig()
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=60.0)
-        return self._client
 
     async def should_debate(self, signal: Signal, nav: float, position_value: float) -> bool:
         """Check if position size warrants a debate."""
@@ -215,29 +208,18 @@ class AgentDebateProtocol:
             )
 
     async def _llm_call(self, prompt: str) -> str:
-        """Call the LLM API. Uses Anthropic Claude as primary."""
-        client = await self._get_client()
-        api_key = self.config.anthropic_api_key.get_secret_value()
-
-        if not api_key:
-            return "(LLM unavailable — no API key configured)"
-
-        response = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": self.config.primary_model,
-                "max_tokens": 1024,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["content"][0]["text"]
+        """Call free LLM (Ollama → Groq fallback). No paid API key needed."""
+        from nexus_alpha.intelligence.free_llm import FreeLLMClient
+        try:
+            client = FreeLLMClient.from_config(self.config)
+            # Use reasoning model (DeepSeek-R1) for debate — structured adversarial reasoning
+            return await client.complete_reasoning(
+                prompt,
+                system="You are a senior quantitative analyst. Be analytical, precise, and concise.",
+            )
+        except Exception:
+            logger.exception("debate_llm_failed")
+            return "(LLM unavailable — using conservative default)"
 
     def _parse_synthesis(self, raw: str, signal: Signal) -> DebateVerdict:
         """Parse the synthesis JSON from the LLM."""

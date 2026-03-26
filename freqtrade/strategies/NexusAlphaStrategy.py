@@ -331,9 +331,20 @@ class NexusAlphaMLStrategy(NexusAlphaStrategy):
         return dataframe
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        dataframe.loc[
+        # Guard: do_predict column is only present when FreqAI is active
+        freqai_active = "do_predict" in dataframe.columns
+
+        ml_signal = (
             (dataframe["&-direction"] == "long")
             & (dataframe["do_predict"] == 1)
+        ) if freqai_active else (
+            # Fallback to base strategy logic when FreqAI not yet trained
+            (dataframe["ema_fast"] > dataframe["ema_slow"])
+            & (dataframe["rsi"] < 50)
+        )
+
+        dataframe.loc[
+            ml_signal
             & (dataframe["sentiment"] > -self.sentiment_threshold.value),
             "enter_long",
         ] = 1

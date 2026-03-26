@@ -77,7 +77,8 @@ dependencies = [
     "pyyaml>=6.0.0",
 
     # === Crypto Exchange Clients ===
-    "ccxt>=4.3.0",
+    "ccxt>=4.3.0",              # 100+ exchanges, free public data
+    "ccxt[async]>=4.3.0",       # ccxt.pro WebSocket streaming (free)
 
     # === NLP / LLM — Free Stack ===
     # Ollama client (OpenAI-compatible local inference)
@@ -91,7 +92,7 @@ dependencies = [
     "crawl4ai>=0.3.0",
     # Free news sources
     "feedparser>=6.0.0",
-    "newspaper3k>=0.2.8",
+    "newspaper4k>=0.9.0",       # newspaper3k maintained fork — Python 3.11+ compatible
     "praw>=7.7.0",              # Reddit API (60 req/min free)
     # Free alerting (replaces PagerDuty)
     "python-telegram-bot>=21.0",
