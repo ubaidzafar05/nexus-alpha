@@ -30,9 +30,13 @@ from typing import Any
 from nexus_alpha.config import NexusConfig
 from nexus_alpha.data.free_sources import (
     CRYPTO_SUBREDDITS,
+    KNOWN_EXCHANGE_WALLETS,
     fetch_all_rss_feeds,
     get_cryptopanic_news,
     get_current_fear_greed,
+    get_exchange_flows,
+    get_gas_price,
+    get_total_tvl_history,
 )
 from nexus_alpha.data.reddit_client import fetch_new_posts
 from nexus_alpha.logging import get_logger
@@ -73,6 +77,14 @@ class SentimentScore:
     source_count: int
     method: str
     timestamp: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class MacroFactors:
+    global_score: float
+    confidence: float
+    source_count: int
+    details: dict[str, float | int | str] = field(default_factory=dict)
 
 
 class SentimentPipelineRunner:
@@ -148,7 +160,7 @@ class SentimentPipelineRunner:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         articles: list[dict[str, Any]] = []
-        for subreddit, batch in zip(subreddits, results):
+        for subreddit, batch in zip(subreddits, results, strict=False):
             if isinstance(batch, Exception):
                 logger.warning("reddit_fetch_error", subreddit=subreddit, error=str(batch))
                 continue
@@ -197,6 +209,133 @@ class SentimentPipelineRunner:
             engagement_boost = min(2.0, 1.0 + (score / 500.0) + (num_comments / 200.0))
             return weight * engagement_boost
         return weight
+
+    def _score_fear_greed(self, payload: dict[str, Any]) -> float:
+        value = int(payload.get("value", 50))
+        return max(-1.0, min(1.0, (value - 50) / 50.0))
+
+    def _score_gas_conditions(self, payload: dict[str, Any]) -> float:
+        propose = float(payload.get("propose_gwei") or 0.0)
+        if propose <= 0:
+            return 0.0
+        if propose < 20:
+            return 0.15
+        if propose < 40:
+            return 0.08
+        if propose < 80:
+            return -0.05
+        return -0.18
+
+    def _score_tvl_history(self, history: list[dict[str, Any]]) -> float:
+        if len(history) < 2:
+            return 0.0
+
+        def _extract_tvl(entry: dict[str, Any]) -> float:
+            for key in ("totalLiquidityUSD", "tvl", "liquidity"):
+                if key in entry:
+                    return float(entry[key] or 0.0)
+            return 0.0
+
+        latest = _extract_tvl(history[-1])
+        previous = _extract_tvl(history[-2])
+        if previous <= 0:
+            return 0.0
+        pct_change = (latest - previous) / previous
+        return max(-0.25, min(0.25, pct_change * 5.0))
+
+    def _score_exchange_flow_pressure(
+        self,
+        wallet_flows: dict[str, list[dict[str, Any]]],
+    ) -> float:
+        total_signed_eth = 0.0
+        total_abs_eth = 0.0
+
+        for wallet_address, flows in wallet_flows.items():
+            wallet_lower = wallet_address.lower()
+            for tx in flows:
+                value_eth = float(tx.get("value_eth", 0.0) or 0.0)
+                if value_eth <= 0:
+                    continue
+                inbound = str(tx.get("to", "")).lower() == wallet_lower
+                outbound = str(tx.get("from", "")).lower() == wallet_lower
+                if inbound:
+                    total_signed_eth -= value_eth
+                elif outbound:
+                    total_signed_eth += value_eth
+                total_abs_eth += value_eth
+
+        if total_abs_eth <= 0:
+            return 0.0
+        normalized = total_signed_eth / total_abs_eth
+        return max(-0.2, min(0.2, normalized * 0.2))
+
+    async def _collect_macro_factors(self) -> MacroFactors:
+        etherscan_key = os.getenv("ETHERSCAN_API_KEY", "")
+        results: dict[str, Any] = {}
+
+        tasks: dict[str, Any] = {
+            "fear_greed": get_current_fear_greed(),
+            "tvl_history": get_total_tvl_history(),
+        }
+        if etherscan_key:
+            tasks["gas"] = get_gas_price(etherscan_key)
+            for wallet_name, wallet_address in KNOWN_EXCHANGE_WALLETS.items():
+                tasks[f"wallet:{wallet_name}"] = get_exchange_flows(
+                    wallet_address=wallet_address,
+                    api_key=etherscan_key,
+                    min_eth=100.0,
+                )
+
+        raw_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        for key, value in zip(tasks.keys(), raw_results, strict=False):
+            if isinstance(value, Exception):
+                logger.warning("macro_source_failed", source=key, error=str(value))
+                continue
+            results[key] = value
+
+        component_scores: list[tuple[float, float]] = []
+        details: dict[str, float | int | str] = {}
+
+        fear_greed = results.get("fear_greed")
+        if isinstance(fear_greed, dict):
+            score = self._score_fear_greed(fear_greed)
+            component_scores.append((score, 0.35))
+            details["fear_greed"] = round(score, 4)
+
+        tvl_history = results.get("tvl_history")
+        if isinstance(tvl_history, list):
+            score = self._score_tvl_history(tvl_history)
+            component_scores.append((score, 0.30))
+            details["tvl_trend"] = round(score, 4)
+
+        gas = results.get("gas")
+        if isinstance(gas, dict):
+            score = self._score_gas_conditions(gas)
+            component_scores.append((score, 0.15))
+            details["gas_pressure"] = round(score, 4)
+
+        wallet_flows = {
+            KNOWN_EXCHANGE_WALLETS[key.split(":", 1)[1]]: value
+            for key, value in results.items()
+            if key.startswith("wallet:") and isinstance(value, list)
+        }
+        if wallet_flows:
+            score = self._score_exchange_flow_pressure(wallet_flows)
+            component_scores.append((score, 0.20))
+            details["exchange_flow_pressure"] = round(score, 4)
+
+        if not component_scores:
+            return MacroFactors(global_score=0.0, confidence=0.0, source_count=0)
+
+        total_weight = sum(weight for _, weight in component_scores)
+        blended = sum(score * weight for score, weight in component_scores) / total_weight
+        confidence = min(0.9, 0.35 + (0.1 * len(component_scores)))
+        return MacroFactors(
+            global_score=round(blended, 4),
+            confidence=round(confidence, 4),
+            source_count=len(component_scores),
+            details=details,
+        )
 
     def _ensure_sentiment_pipeline(self) -> Any:
         if self._sentiment_pipeline is None:
@@ -277,22 +416,16 @@ class SentimentPipelineRunner:
         """Single pipeline run: fetch → score → aggregate → write."""
         pipeline = self._ensure_sentiment_pipeline()
 
-        raw_articles = await self._collect_raw_articles()
+        raw_articles, macro_factors = await asyncio.gather(
+            self._collect_raw_articles(),
+            self._collect_macro_factors(),
+        )
 
-        # 3. Fear & Greed (macro sentiment — unlimited free)
-        fear_greed_score = 0.0
-        try:
-            fg = await get_current_fear_greed()
-            fear_greed_score = (int(fg.get("value", 50)) - 50) / 50.0
-        except Exception:
-            pass
-
-        if not raw_articles:
+        if not raw_articles and macro_factors.source_count == 0:
             logger.info("no_articles_fetched_this_cycle")
             return {}
 
-        # Score all articles
-        enriched = await pipeline.process_articles(raw_articles)
+        enriched = await pipeline.process_articles(raw_articles) if raw_articles else []
 
         # Aggregate scores per asset
         asset_scores: dict[str, list[tuple[float, float]]] = defaultdict(list)
@@ -317,26 +450,35 @@ class SentimentPipelineRunner:
             weighted_score = sum(s * c for s, c in score_pairs) / total_weight
             avg_confidence = total_weight / len(score_pairs)
 
-            # Blend with Fear & Greed (30% weight for macro context)
-            blended = weighted_score * 0.7 + fear_greed_score * 0.3
+            blended = weighted_score
+            if macro_factors.source_count > 0:
+                blended = weighted_score * 0.7 + macro_factors.global_score * 0.3
 
             result[asset] = SentimentScore(
                 asset=asset,
                 score=round(blended, 4),
                 confidence=round(avg_confidence, 4),
                 source_count=len(score_pairs),
-                method="hybrid_finbert_qwen3",
+                method=(
+                    "hybrid_finbert_qwen3_macro"
+                    if macro_factors.source_count > 0
+                    else "hybrid_finbert_qwen3"
+                ),
             )
 
-        # For assets with no articles, use Fear & Greed as fallback
+        # For assets with no articles, use macro factors as fallback
         for asset in TRACKED_ASSETS:
             if asset not in result:
                 result[asset] = SentimentScore(
                     asset=asset,
-                    score=round(fear_greed_score * 0.5, 4),  # Diluted — less conviction
-                    confidence=0.4,
-                    source_count=0,
-                    method="fear_greed_only",
+                    score=round(macro_factors.global_score * 0.5, 4),
+                    confidence=max(0.4, macro_factors.confidence * 0.7),
+                    source_count=macro_factors.source_count,
+                    method=(
+                        "macro_factors_only"
+                        if macro_factors.source_count > 0
+                        else "neutral_fallback"
+                    ),
                 )
 
         return result

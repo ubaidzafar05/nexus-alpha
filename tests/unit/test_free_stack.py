@@ -11,11 +11,15 @@ Unit tests for the free stack components:
 
 from __future__ import annotations
 
-import json
+import sys
+import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
+from click.testing import CliRunner
+
+from nexus_alpha.cli import cli
 
 # ─── FreeLLMClient ────────────────────────────────────────────────────────────
 
@@ -44,7 +48,11 @@ class TestFreeLLMClient:
         client = FreeLLMClient.from_config(cfg)
 
         with patch.object(client, "_ollama_complete", side_effect=ConnectionError("refused")):
-            with patch.object(client, "_groq_complete", new=AsyncMock(return_value="groq response")):
+            with patch.object(
+                client,
+                "_groq_complete",
+                new=AsyncMock(return_value="groq response"),
+            ):
                 result = await client.complete("hello")
         assert result == "groq response"
 
@@ -69,7 +77,7 @@ class TestHybridSentimentPipeline:
 
     @pytest.mark.asyncio
     async def test_process_articles_returns_enriched(self):
-        from nexus_alpha.intelligence.sentiment import HybridSentimentPipeline, SentimentResult
+        from nexus_alpha.intelligence.sentiment import SentimentResult
 
         pipeline = self._make_pipeline()
 
@@ -183,6 +191,109 @@ class TestSentimentPipelineRunner:
 
         assert reddit_weight > base_weight
 
+    def test_score_tvl_history_positive_trend(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        score = runner._score_tvl_history(
+            [
+                {"totalLiquidityUSD": 1_000_000_000},
+                {"totalLiquidityUSD": 1_100_000_000},
+            ]
+        )
+
+        assert score > 0
+
+    def test_score_exchange_flow_pressure_prefers_outflows(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        wallet = "0xexchange"
+        score = runner._score_exchange_flow_pressure(
+            {
+                wallet: [
+                    {"from": wallet, "to": "0xuser1", "value_eth": 300.0},
+                    {"from": "0xuser2", "to": wallet, "value_eth": 100.0},
+                ]
+            }
+        )
+
+        assert score > 0
+
+    @pytest.mark.asyncio
+    async def test_collect_macro_factors_combines_sources(self, monkeypatch):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        monkeypatch.setenv("ETHERSCAN_API_KEY", "test-key")
+        monkeypatch.setattr(
+            "nexus_alpha.data.sentiment_pipeline.get_current_fear_greed",
+            AsyncMock(return_value={"value": 70}),
+        )
+        monkeypatch.setattr(
+            "nexus_alpha.data.sentiment_pipeline.get_total_tvl_history",
+            AsyncMock(
+                return_value=[
+                    {"totalLiquidityUSD": 1_000_000_000},
+                    {"totalLiquidityUSD": 1_050_000_000},
+                ]
+            ),
+        )
+        monkeypatch.setattr(
+            "nexus_alpha.data.sentiment_pipeline.get_gas_price",
+            AsyncMock(return_value={"propose_gwei": "18"}),
+        )
+        monkeypatch.setattr(
+            "nexus_alpha.data.sentiment_pipeline.get_exchange_flows",
+            AsyncMock(return_value=[{"from": "0xwallet", "to": "0xuser", "value_eth": 200.0}]),
+        )
+
+        factors = await runner._collect_macro_factors()
+
+        assert factors.source_count >= 3
+        assert factors.global_score > 0
+        assert "fear_greed" in factors.details
+
+    @pytest.mark.asyncio
+    async def test_run_once_uses_macro_only_when_no_articles(self, monkeypatch):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import MacroFactors, SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.process_articles = AsyncMock(return_value=[])
+
+        monkeypatch.setattr(runner, "_ensure_sentiment_pipeline", lambda: mock_pipeline)
+        monkeypatch.setattr(runner, "_collect_raw_articles", AsyncMock(return_value=[]))
+        monkeypatch.setattr(
+            runner,
+            "_collect_macro_factors",
+            AsyncMock(
+                return_value=MacroFactors(
+                    global_score=0.3,
+                    confidence=0.6,
+                    source_count=3,
+                    details={"fear_greed": 0.2},
+                )
+            ),
+        )
+
+        scores = await runner._run_once()
+
+        assert scores["BTC"].score == 0.15
+        assert scores["BTC"].method == "macro_factors_only"
+
     @pytest.mark.asyncio
     async def test_run_once_uses_reddit_articles_in_aggregation(self, monkeypatch):
         from nexus_alpha.config import NexusConfig
@@ -231,6 +342,7 @@ class TestSentimentPipelineRunner:
         assert "BTC" in scores
         assert scores["BTC"].score > 0.5
         assert scores["BTC"].source_count == 1
+        assert scores["BTC"].method == "hybrid_finbert_qwen3_macro"
 
 
 # ─── LiveMarketIngestor ───────────────────────────────────────────────────────
@@ -287,14 +399,13 @@ class TestTelegramAlerts:
 class TestNexusAlphaStrategyDoPredict:
     def test_populate_entry_trend_without_freqai_column(self):
         """Should not raise KeyError when do_predict column is absent."""
-        import sys, types
-
         # Stub freqtrade so it can be imported without installation
         ft_stub = types.ModuleType("freqtrade")
         ft_strategy_stub = types.ModuleType("freqtrade.strategy")
 
         class _IStrategy:
-            def __init__(self, config=None): pass
+            def __init__(self, config=None):
+                pass
 
         ft_strategy_stub.IStrategy = _IStrategy
         ft_strategy_stub.DecimalParameter = lambda *a, **kw: MagicMock(value=0.1)
@@ -326,27 +437,18 @@ class TestNexusAlphaStrategyDoPredict:
 
 class TestCLICommands:
     def test_backtest_command_exists(self):
-        from click.testing import CliRunner
-        from nexus_alpha.cli import cli
-
         runner = CliRunner()
         result = runner.invoke(cli, ["backtest", "--help"])
         assert result.exit_code == 0
         assert "Freqtrade" in result.output or "freqtrade" in result.output.lower()
 
     def test_live_ingest_command_exists(self):
-        from click.testing import CliRunner
-        from nexus_alpha.cli import cli
-
         runner = CliRunner()
         result = runner.invoke(cli, ["live-ingest", "--help"])
         assert result.exit_code == 0
         assert "exchange" in result.output.lower()
 
     def test_health_command_exists(self):
-        from click.testing import CliRunner
-        from nexus_alpha.cli import cli
-
         runner = CliRunner()
         result = runner.invoke(cli, ["health", "--help"])
         assert result.exit_code == 0
