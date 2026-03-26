@@ -87,13 +87,17 @@ class TelegramAlerts:
         self._lock = asyncio.Lock()
 
     @classmethod
-    def from_env(cls) -> "TelegramAlerts":
+    def from_env(cls) -> TelegramAlerts:
         """Load credentials from environment variables."""
         import os
+
         token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
         if not token or not chat_id:
-            logger.warning("telegram_not_configured", hint="Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID")
+            logger.warning(
+                "telegram_not_configured",
+                hint="Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID",
+            )
         return cls(bot_token=token, chat_id=chat_id)
 
     @property
@@ -211,9 +215,12 @@ class TelegramAlerts:
 
     async def system_health(self, status: dict[str, Any]) -> None:
         msg = (
-            f"*System Health Check*\n\n"
+            "*System Health Check*\n\n"
             + "\n".join(
-                f"{'✅' if v == 'ok' else '❌'} {k}: `{v}`"
+                (
+                    f"{'✅' if v in {'ok', 'configured'} else ('⚠️' if v == 'degraded' else '❌')} "
+                    f"{k}: `{v}`"
+                )
                 for k, v in status.items()
             )
         )

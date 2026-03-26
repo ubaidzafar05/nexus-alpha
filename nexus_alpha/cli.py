@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from urllib.parse import urlparse
 
 import click
 
@@ -21,6 +22,84 @@ from nexus_alpha.config import NexusConfig, TradingMode, load_config
 from nexus_alpha.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
+
+
+async def _probe_tcp_endpoint(host: str, port: int, timeout: float = 2.0) -> str:
+    try:
+        _reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=timeout,
+        )
+        writer.close()
+        await writer.wait_closed()
+        return "ok"
+    except Exception:
+        return "down"
+
+
+def _parse_host_port_from_url(url: str, default_port: int) -> tuple[str, int]:
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or default_port
+    return host, port
+
+
+def _parse_kafka_bootstrap(bootstrap_servers: str) -> tuple[str, int]:
+    first = bootstrap_servers.split(",")[0].strip()
+    if ":" in first:
+        host, port = first.rsplit(":", 1)
+        return host, int(port)
+    return first, 9092
+
+
+def _exchange_credentials(config: NexusConfig, exchange: str) -> tuple[str, str]:
+    exchange_key = exchange.lower()
+    if exchange_key == "binance":
+        return (
+            config.binance.api_key.get_secret_value(),
+            config.binance.api_secret.get_secret_value(),
+        )
+    if exchange_key == "bybit":
+        return (
+            config.bybit.api_key.get_secret_value(),
+            config.bybit.api_secret.get_secret_value(),
+        )
+    if exchange_key == "kraken":
+        return (
+            config.kraken.api_key.get_secret_value(),
+            config.kraken.api_secret.get_secret_value(),
+        )
+    return "", ""
+
+
+async def _collect_health_status(config: NexusConfig) -> dict[str, str]:
+    from nexus_alpha.alerts.telegram import TelegramAlerts
+    from nexus_alpha.intelligence.free_llm import FreeLLMClient
+
+    db_host, db_port = _parse_host_port_from_url(
+        config.database.timescaledb_url.get_secret_value(),
+        5432,
+    )
+    redis_host, redis_port = _parse_host_port_from_url(config.database.redis_url, 6379)
+    kafka_host, kafka_port = _parse_kafka_bootstrap(config.kafka.bootstrap_servers)
+
+    llm_client = FreeLLMClient.from_config(config.llm)
+    llm_status = await llm_client.health_check()
+    telegram = TelegramAlerts.from_env()
+
+    timescaledb_status, redis_status, kafka_status = await asyncio.gather(
+        _probe_tcp_endpoint(db_host, db_port),
+        _probe_tcp_endpoint(redis_host, redis_port),
+        _probe_tcp_endpoint(kafka_host, kafka_port),
+    )
+
+    return {
+        "timescaledb": timescaledb_status,
+        "redis": redis_status,
+        "kafka": kafka_status,
+        "ollama": llm_status.get("status", "down"),
+        "telegram": "configured" if telegram.is_configured else "not_configured",
+    }
 
 
 @click.group()
@@ -82,8 +161,8 @@ def backtest(
     download_data: bool,
 ) -> None:
     """Run backtesting via Freqtrade + NexusAlphaStrategy."""
-    import subprocess
     import shutil
+    import subprocess
 
     ft = shutil.which("freqtrade")
     if ft is None:
@@ -101,7 +180,7 @@ def backtest(
             "--timeframe", timeframe,
             "--timerange", f"{start_date.replace('-', '')}-{end_date.replace('-', '')}",
         ]
-        subprocess.run(dl_cmd, check=True)
+        subprocess.run(dl_cmd, check=True)  # noqa: S603
 
     click.echo(f"🔬  Backtesting {strategy}: {start_date} → {end_date}")
     bt_cmd = [
@@ -112,7 +191,7 @@ def backtest(
         "--starting-balance", str(int(initial_capital)),
         "--timeframe", timeframe,
     ]
-    subprocess.run(bt_cmd, check=True)
+    subprocess.run(bt_cmd, check=True)  # noqa: S603
 
 
 @cli.command()
@@ -133,22 +212,21 @@ def agents(ctx: click.Context, list_agents: bool, leaderboard: bool) -> None:
 @click.pass_context
 def health(ctx: click.Context) -> None:
     """Show system health status."""
+    config: NexusConfig = ctx.obj["config"]
+    status = asyncio.run(_collect_health_status(config))
+
     click.echo("NEXUS-ALPHA System Health")
     click.echo("=" * 40)
+    for component, state in status.items():
+        icon = "✅" if state in {"ok", "configured"} else ("⚠️" if state == "degraded" else "❌")
+        click.echo(f"  {icon} {component}: {state}")
 
-    components = [
-        "TimescaleDB", "Redis", "Kafka", "World Model",
-        "Regime Oracle", "Signal Engine", "Execution Engine",
-        "Circuit Breaker", "OpenClaw Network",
-    ]
-    for comp in components:
-        click.echo(f"  {comp}: not connected (system not running)")
-
-    click.echo("\nStart with `nexus run` to see live health.")
+    healthy = sum(1 for state in status.values() if state in {"ok", "configured"})
+    click.echo(f"\nHealthy checks: {healthy}/{len(status)}")
 
 
 @cli.command()
-@click.option("--host", default="0.0.0.0", help="Host interface")
+@click.option("--host", default="127.0.0.1", help="Host interface")
 @click.option("--port", default=8080, type=int, help="Port")
 def api(host: str, port: int) -> None:
     """Run health/readiness API surface for infrastructure checks."""
@@ -212,7 +290,7 @@ def adversarial(ctx: click.Context, base_price: float) -> None:
     click.echo("Running adversarial test suite...")
     click.echo("=" * 50)
 
-    results = runner.run_all(base_price=base_price)
+    runner.run_all(base_price=base_price)
     report = runner.report()
 
     click.echo(f"\nTotal scenarios:  {report['total_scenarios']}")
@@ -225,7 +303,10 @@ def adversarial(ctx: click.Context, base_price: float) -> None:
     click.echo("\nScenario Results:")
     for s in report["scenarios"]:
         status = "✓" if s["survived"] else "✗"
-        click.echo(f"  {status} {s['name']}: NAV {s['nav_impact']}, DD {s['max_dd']}, CB L{s['cb_level']}")
+        click.echo(
+            f"  {status} {s['name']}: NAV {s['nav_impact']}, "
+            f"DD {s['max_dd']}, CB L{s['cb_level']}"
+        )
 
 
 # ─── Live Ingest Command ─────────────────────────────────────────────────────
@@ -246,10 +327,15 @@ def live_ingest(ctx: click.Context, exchange: str, symbols: str, multi: bool) ->
         if multi:
             ingestor = MultiExchangeIngestor(config)
         else:
-            ingestor = LiveMarketIngestor(  # type: ignore[assignment]
+            api_key, api_secret = _exchange_credentials(config, exchange)
+            ingestor = LiveMarketIngestor(
                 exchange_id=exchange,
                 symbols=symbol_list,
-                config=config,
+                kafka_bootstrap=config.kafka.bootstrap_servers,
+                kafka_tick_topic=config.kafka.tick_topic,
+                redis_url=config.database.redis_url,
+                exchange_api_key=api_key,
+                exchange_api_secret=api_secret,
             )
         click.echo(f"📡  Live ingestor starting — {'multi-exchange' if multi else exchange}")
         click.echo(f"    Symbols: {symbol_list}")
@@ -281,25 +367,28 @@ async def _run_system(config: NexusConfig) -> None:
     logger.info("initializing_components")
 
     # ── Core intelligence ─────────────────────────────────────────────────────
+    from nexus_alpha.agents.tournament import TournamentOrchestrator
+    from nexus_alpha.alerts.telegram import TelegramAlerts
     from nexus_alpha.core.regime_oracle import RegimeOracle
     from nexus_alpha.core.world_model import WorldModel
-    from nexus_alpha.signals.signal_engine import SignalFusionEngine
-    from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
-    from nexus_alpha.agents.tournament import TournamentOrchestrator
-    from nexus_alpha.intelligence.openclaw_agents import OpenClawNetwork
-    from nexus_alpha.intelligence.crawl4ai_agents import FreeIntelligenceOrchestrator
-    from nexus_alpha.infrastructure.self_healing import SystemWatchdog
     from nexus_alpha.data.live_ingestor import MultiExchangeIngestor
     from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
-    from nexus_alpha.alerts.telegram import TelegramAlerts
+    from nexus_alpha.infrastructure.self_healing import SystemWatchdog
+    from nexus_alpha.intelligence.crawl4ai_agents import FreeIntelligenceOrchestrator
+    from nexus_alpha.intelligence.openclaw_agents import OpenClawNetwork
+    from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
+    from nexus_alpha.signals.signal_engine import SignalFusionEngine
 
     # ── Alerts first — so we can notify on startup/failure ───────────────────
     alerts = TelegramAlerts.from_env()
 
     # ── Core modules ──────────────────────────────────────────────────────────
-    circuit_breaker = CircuitBreakerSystem(risk_config=config.risk)
-    regime_oracle = RegimeOracle(n_regimes=5, lookback_window=200)
-    world_model = WorldModel(config.world_model)
+    core_components = (
+        CircuitBreakerSystem(risk_config=config.risk),
+        RegimeOracle(n_regimes=5, lookback_window=200),
+        WorldModel(config.world_model),
+        TournamentOrchestrator(config.tournament),
+    )
     signal_engine = SignalFusionEngine()
     signal_engine.register_defaults()
 
@@ -316,9 +405,6 @@ async def _run_system(config: NexusConfig) -> None:
     ingestor = MultiExchangeIngestor(config)
     sentiment_runner = SentimentPipelineRunner(config)
 
-    # ── Agent tournament ──────────────────────────────────────────────────────
-    tournament = TournamentOrchestrator(config.tournament)
-
     # ── System watchdog ───────────────────────────────────────────────────────
     watchdog = SystemWatchdog(check_interval_seconds=30.0)
 
@@ -327,7 +413,17 @@ async def _run_system(config: NexusConfig) -> None:
         trading_mode=config.trading_mode.value,
         circuit_breaker="enabled" if config.risk.circuit_breaker_enabled else "disabled",
         llm_backend=config.llm.ollama_base_url,
+        core_components=len(core_components),
     )
+
+    try:
+        initial_reports = await free_intel.run_all()
+        logger.info("free_intelligence_bootstrap_complete", reports=len(initial_reports))
+    except Exception as err:
+        logger.warning("free_intelligence_bootstrap_failed", error=str(err))
+    free_intel.start_scheduler()
+
+    health_status = await _collect_health_status(config)
 
     # ── Start all subsystems ──────────────────────────────────────────────────
     tasks = [
@@ -343,13 +439,17 @@ async def _run_system(config: NexusConfig) -> None:
     click.echo(f"  Mode:     {config.trading_mode.value}")
     click.echo(f"  LLM:      Ollama ({config.llm.ollama_primary_model})")
     click.echo(f"  Kafka:    {config.kafka.bootstrap_servers}")
-    click.echo(f"  Monthly cost: $0.00")
+    click.echo("  Monthly cost: $0.00")
     click.echo("  Press Ctrl+C to stop.\n")
 
     # Notify Telegram on startup
-    await alerts.send(
-        f"✅ NEXUS-ALPHA started\nMode: `{config.trading_mode.value}`\nLLM: `{config.llm.ollama_primary_model}`",
+    startup_msg = (
+        "✅ NEXUS-ALPHA started\n"
+        f"Mode: `{config.trading_mode.value}`\n"
+        f"LLM: `{config.llm.ollama_primary_model}`"
     )
+    await alerts.send(startup_msg)
+    await alerts.system_health(health_status)
 
     try:
         await asyncio.gather(*tasks)
@@ -357,6 +457,7 @@ async def _run_system(config: NexusConfig) -> None:
         logger.info("shutdown_requested")
         sentiment_runner.stop()
         ingestor.stop()
+        free_intel.stop_scheduler()
         await openclaw.stop_all()
         await watchdog.stop()
         for t in tasks:

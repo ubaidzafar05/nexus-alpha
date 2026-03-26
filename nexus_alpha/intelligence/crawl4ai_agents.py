@@ -327,6 +327,7 @@ class FreeIntelligenceOrchestrator:
     cryptopanic_token: str = ""
     ollama_base_url: str = "http://localhost:11434"
     _report_buffer: list[IntelligenceReport] = field(default_factory=list)
+    _scheduler: Any | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._rss = RSSNewsAgent()
@@ -354,6 +355,9 @@ class FreeIntelligenceOrchestrator:
 
     def start_scheduler(self, kafka_producer: Any | None = None) -> None:
         """Start APScheduler background jobs. Call once at startup."""
+        if self._scheduler is not None:
+            logger.info("free_intelligence_scheduler_already_started")
+            return
         try:
             from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import]
         except ImportError:
@@ -391,7 +395,15 @@ class FreeIntelligenceOrchestrator:
 
         scheduler.add_job(_publish_all, "interval", minutes=15, id="intelligence_agents")
         scheduler.start()
+        self._scheduler = scheduler
         logger.info("free_intelligence_scheduler_started")
+
+    def stop_scheduler(self) -> None:
+        if self._scheduler is None:
+            return
+        self._scheduler.shutdown(wait=False)
+        self._scheduler = None
+        logger.info("free_intelligence_scheduler_stopped")
 
     def get_buffered_reports(self, clear: bool = True) -> list[IntelligenceReport]:
         reports = list(self._report_buffer)
