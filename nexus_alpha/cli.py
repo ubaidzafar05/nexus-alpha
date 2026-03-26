@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any
 from urllib.parse import urlparse
 
 import click
@@ -345,6 +346,43 @@ def live_ingest(ctx: click.Context, exchange: str, symbols: str, multi: bool) ->
     asyncio.run(_run())
 
 
+# ─── Heartbeat — Periodic Health & Metrics ────────────────────────────────────
+
+
+async def _heartbeat(
+    alerts: Any,
+    trading_loop: Any,
+    circuit_breaker: Any,
+    config: NexusConfig,
+    interval_s: float = 900.0,
+) -> None:
+    """Send periodic health/metrics to Telegram every 15 minutes."""
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            m = trading_loop.metrics
+            cb = circuit_breaker.state
+            lines = [
+                "📊 *NEXUS-ALPHA Heartbeat*",
+                f"• Cycles: `{m.ticks_processed}`",
+                f"• Signals: `{m.signals_generated}`",
+                f"• Debates: `{m.debates_triggered}`",
+                f"• Orders: `{m.orders_submitted}` (rejected: `{m.orders_rejected}`)",
+                f"• Errors: `{m.errors}`",
+                f"• Circuit Breaker: `{cb.level.name}`",
+            ]
+            await alerts.send("\n".join(lines))
+
+            health = await _collect_health_status(config)
+            degraded = [k for k, v in health.items() if v not in {"ok", "configured"}]
+            if degraded:
+                await alerts.send(
+                    f"⚠️ Degraded services: {', '.join(degraded)}"
+                )
+        except Exception:
+            logger.debug("heartbeat_error")  # heartbeat must never crash
+
+
 # ─── System Runner ────────────────────────────────────────────────────────────
 
 async def _run_system(config: NexusConfig) -> None:
@@ -370,6 +408,7 @@ async def _run_system(config: NexusConfig) -> None:
     from nexus_alpha.agents.tournament import TournamentOrchestrator
     from nexus_alpha.alerts.telegram import TelegramAlerts
     from nexus_alpha.core.regime_oracle import RegimeOracle
+    from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
     from nexus_alpha.core.world_model import WorldModel
     from nexus_alpha.data.live_ingestor import MultiExchangeIngestor
     from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
@@ -383,14 +422,22 @@ async def _run_system(config: NexusConfig) -> None:
     alerts = TelegramAlerts.from_env()
 
     # ── Core modules ──────────────────────────────────────────────────────────
-    core_components = (
-        CircuitBreakerSystem(risk_config=config.risk),
-        RegimeOracle(n_regimes=5, lookback_window=200),
-        WorldModel(config.world_model),
-        TournamentOrchestrator(config.tournament),
-    )
+    circuit_breaker = CircuitBreakerSystem(risk_config=config.risk)
+    _regime_oracle = RegimeOracle(n_regimes=5, lookback_window=200)  # noqa: F841
+    _world_model = WorldModel(config.world_model)  # noqa: F841
+    _tournament = TournamentOrchestrator(config.tournament)  # noqa: F841
+
     signal_engine = SignalFusionEngine()
     signal_engine.register_defaults()
+
+    # ── Trading Loop — Signal → Debate → Portfolio → Execution ───────────────
+    trading_loop = TradingLoopOrchestrator(
+        config=config,
+        signal_engine=signal_engine,
+        circuit_breaker=circuit_breaker,
+        alerts=alerts,
+        cycle_interval_s=60.0,
+    )
 
     # ── Intelligence network ──────────────────────────────────────────────────
     # Primary: free agents (RSS, CryptoPanic, DeFiLlama, SEC EDGAR)
@@ -413,7 +460,6 @@ async def _run_system(config: NexusConfig) -> None:
         trading_mode=config.trading_mode.value,
         circuit_breaker="enabled" if config.risk.circuit_breaker_enabled else "disabled",
         llm_backend=config.llm.ollama_base_url,
-        core_components=len(core_components),
     )
 
     try:
@@ -431,6 +477,11 @@ async def _run_system(config: NexusConfig) -> None:
         asyncio.create_task(sentiment_runner.run(), name="sentiment_pipeline"),
         asyncio.create_task(openclaw.start_all(), name="openclaw"),
         asyncio.create_task(watchdog.run(), name="watchdog"),
+        asyncio.create_task(trading_loop.run(), name="trading_loop"),
+        asyncio.create_task(
+            _heartbeat(alerts, trading_loop, circuit_breaker, config),
+            name="heartbeat",
+        ),
     ]
 
     click.echo("╔══════════════════════════════════════════╗")
@@ -455,6 +506,7 @@ async def _run_system(config: NexusConfig) -> None:
         await asyncio.gather(*tasks)
     except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("shutdown_requested")
+        trading_loop.stop()
         sentiment_runner.stop()
         ingestor.stop()
         free_intel.stop_scheduler()

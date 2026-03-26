@@ -11,7 +11,6 @@ Three rounds:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
 import orjson
 
@@ -52,7 +51,8 @@ Be specific. Use numbers. No vague language.
 """
 
 CHALLENGE_PROMPT = """\
-<role>You are a risk-focused devil's advocate. Your job is to stress-test this trade proposal.</role>
+<role>You are a risk-focused devil's advocate. \
+Your job is to stress-test this trade proposal.</role>
 
 <proposal>
 {proposal_text}
@@ -215,7 +215,8 @@ class AgentDebateProtocol:
             # Use reasoning model (DeepSeek-R1) for debate — structured adversarial reasoning
             return await client.complete_reasoning(
                 prompt,
-                system="You are a senior quantitative analyst. Be analytical, precise, and concise.",
+                system="You are a senior quantitative analyst. "
+                "Be analytical, precise, and concise.",
             )
         except Exception:
             logger.exception("debate_llm_failed")
@@ -248,6 +249,4 @@ class AgentDebateProtocol:
             )
 
     async def close(self) -> None:
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+        pass

@@ -15,7 +15,7 @@ import numpy as np
 
 from nexus_alpha.config import RiskConfig
 from nexus_alpha.logging import get_logger
-from nexus_alpha.types import CircuitBreakerLevel, Portfolio
+from nexus_alpha.types import CircuitBreakerLevel
 
 logger = get_logger(__name__)
 
@@ -206,7 +206,7 @@ class CircuitBreakerSystem:
             triggered_at=datetime.utcnow(),
             actions_taken=self._get_actions(level),
         )
-        logger.warning("circuit_breaker_manual_override", level=level.name, reason=reason)
+        logger.warning("circuit_breaker_manual_override", cb_level=level.name, reason=reason)
 
     def reset(self) -> None:
         """Reset to NORMAL (requires human authorization in production)."""
@@ -362,7 +362,11 @@ class PreTradeRiskValidator:
     Every order must pass these checks before submission.
     """
 
-    def __init__(self, risk_config: RiskConfig | None = None, circuit_breaker: CircuitBreakerSystem | None = None):
+    def __init__(
+        self,
+        risk_config: RiskConfig | None = None,
+        circuit_breaker: CircuitBreakerSystem | None = None,
+    ):
         self.config = risk_config or RiskConfig()
         self.circuit_breaker = circuit_breaker
 
@@ -384,14 +388,18 @@ class PreTradeRiskValidator:
 
         # Check 1: Circuit breaker allows trading
         if self.circuit_breaker and not self.circuit_breaker.is_trading_allowed:
-            failed_checks.append(f"Circuit breaker at level {self.circuit_breaker.state.level.name}")
+            failed_checks.append(
+                f"Circuit breaker at level "
+                f"{self.circuit_breaker.state.level.name}"
+            )
         else:
             passed_checks.append("Circuit breaker: OK")
 
         # Check 2: Single position size limit
         if position_pct > self.config.max_single_position_pct:
             failed_checks.append(
-                f"Position size {position_pct:.1%} exceeds max {self.config.max_single_position_pct:.0%}"
+                f"Position size {position_pct:.1%} exceeds "
+                f"max {self.config.max_single_position_pct:.0%}"
             )
         else:
             passed_checks.append(f"Position size: {position_pct:.1%}")
