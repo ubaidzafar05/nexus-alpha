@@ -75,6 +75,7 @@ class LiveMarketIngestor:
         redis_url: str = "redis://localhost:6379/0",
         exchange_api_key: str = "",
         exchange_api_secret: str = "",
+        use_testnet: bool = False,
     ) -> None:
         self._exchange_id = exchange_id
         self._symbols = symbols or self.DEFAULT_SYMBOLS
@@ -83,13 +84,14 @@ class LiveMarketIngestor:
         self._redis_url = redis_url
         self._api_key = exchange_api_key
         self._api_secret = exchange_api_secret
+        self._use_testnet = use_testnet
         self._stats = IngestorStats()
         self._running = False
         self._producer: Any = None
         self._redis: Any = None
 
     @classmethod
-    def from_config(cls, config: NexusConfig) -> "LiveMarketIngestor":
+    def from_config(cls, config: NexusConfig) -> LiveMarketIngestor:
         return cls(
             exchange_id="binance",
             symbols=cls.DEFAULT_SYMBOLS,
@@ -98,6 +100,7 @@ class LiveMarketIngestor:
             redis_url=config.database.redis_url,
             exchange_api_key=config.binance.api_key.get_secret_value(),
             exchange_api_secret=config.binance.api_secret.get_secret_value(),
+            use_testnet=config.binance.testnet,
         )
 
     # ── Kafka producer ────────────────────────────────────────────────────────
@@ -262,6 +265,9 @@ class LiveMarketIngestor:
             exchange_config["secret"] = self._api_secret
 
         exchange = getattr(ccxtpro, self._exchange_id)(exchange_config)
+        if self._use_testnet and hasattr(exchange, "set_sandbox_mode"):
+            exchange.set_sandbox_mode(True)
+            logger.info("exchange_sandbox_mode_enabled", exchange=self._exchange_id)
 
         logger.info(
             "live_ingestor_starting",
@@ -316,8 +322,11 @@ class MultiExchangeIngestor:
     """
 
     EXCHANGE_CONFIGS = [
-        {"exchange_id": "binance", "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "ADA/USDT"]},
-        {"exchange_id": "bybit",   "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"]},
+        {
+            "exchange_id": "binance",
+            "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "ADA/USDT"],
+        },
+        {"exchange_id": "bybit", "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"]},
     ]
 
     def __init__(self, config: NexusConfig) -> None:
@@ -329,6 +338,7 @@ class MultiExchangeIngestor:
                 kafka_bootstrap=config.kafka.bootstrap_servers,
                 kafka_tick_topic=config.kafka.tick_topic,
                 redis_url=config.database.redis_url,
+                use_testnet=config.binance.testnet and ec["exchange_id"] == "binance",
             )
             for ec in self.EXCHANGE_CONFIGS
         ]

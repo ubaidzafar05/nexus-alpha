@@ -337,10 +337,13 @@ def live_ingest(ctx: click.Context, exchange: str, symbols: str, multi: bool) ->
                 redis_url=config.database.redis_url,
                 exchange_api_key=api_key,
                 exchange_api_secret=api_secret,
+                use_testnet=config.binance.testnet,
             )
         click.echo(f"📡  Live ingestor starting — {'multi-exchange' if multi else exchange}")
         click.echo(f"    Symbols: {symbol_list}")
         click.echo(f"    Kafka:   {config.kafka.bootstrap_servers}")
+        if config.binance.testnet:
+            click.echo("    Sandbox: Binance testnet enabled")
         await ingestor.run()
 
     asyncio.run(_run())

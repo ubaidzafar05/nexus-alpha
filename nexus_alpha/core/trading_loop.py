@@ -38,9 +38,7 @@ from nexus_alpha.types import (
     DebateVerdict,
     ExchangeName,
     MarketRegime,
-    Order,
     OrderSide,
-    OrderType,
     Portfolio,
     Position,
     Signal,
@@ -361,6 +359,13 @@ class TradingLoopOrchestrator:
         price: float,
         decision: TradingDecision,
     ) -> None:
+        if not self._config.binance.testnet:
+            logger.error("live_execution_requires_testnet")
+            await self._alerts.risk_alert("live_execution_blocked", {
+                "message": "Live execution is disabled unless BINANCE_TESTNET=true",
+            })
+            return
+
         has_keys = bool(self._config.binance.api_key.get_secret_value())
         if not has_keys:
             logger.error("live_execution_blocked_no_exchange_keys")
@@ -369,31 +374,19 @@ class TradingLoopOrchestrator:
             })
             return
 
-        order = Order(
-            order_id=uuid.uuid4().hex[:12],
-            symbol=symbol,
-            exchange=ExchangeName.BINANCE,
-            side=side,
-            order_type=OrderType.LIMIT,
-            quantity=quantity,
-            price=price,
-            metadata={
-                "source": "trading_loop",
-                "confidence": decision.signal.confidence,
-                "debate": decision.debate_verdict is not None,
-            },
-        )
-        routing = self._oms.submit_order(order)
+        order = await self._submit_testnet_order(symbol, side, quantity, price, decision)
+        if order is None:
+            return
+
         self._metrics.orders_submitted += 1
         self._metrics.last_order_at = time.monotonic()
 
         logger.info(
-            "live_order_submitted",
-            order_id=order.order_id,
+            "testnet_order_submitted",
+            order_id=order["id"],
             symbol=symbol,
             side=side.value,
-            primary_exchange=routing.primary_exchange.value,
-            est_cost_bps=f"{routing.estimated_cost_bps:.1f}",
+            status=order.get("status", "submitted"),
         )
 
         await self._alerts.trade_opened({
@@ -405,7 +398,60 @@ class TradingLoopOrchestrator:
             "strategy": "signal_fusion",
             "regime": "unknown",
             "confidence": decision.signal.confidence,
+            "exchange_mode": "binance_testnet",
         })
+
+    async def _submit_testnet_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float,
+        price: float,
+        decision: TradingDecision,
+    ) -> dict[str, Any] | None:
+        try:
+            import ccxt.async_support as ccxt_async  # type: ignore[import]
+        except ImportError:
+            logger.error("ccxt_async_not_installed")
+            await self._alerts.risk_alert("ccxt_missing", {
+                "message": "ccxt async support is not installed",
+            })
+            return None
+
+        exchange = ccxt_async.binance(
+            {
+                "apiKey": self._config.binance.api_key.get_secret_value(),
+                "secret": self._config.binance.api_secret.get_secret_value(),
+                "enableRateLimit": True,
+                "options": {"defaultType": "spot"},
+            }
+        )
+        if hasattr(exchange, "set_sandbox_mode"):
+            exchange.set_sandbox_mode(True)
+
+        try:
+            await exchange.load_markets()
+            order = await exchange.create_order(
+                symbol,
+                "limit",
+                side.value,
+                quantity,
+                price,
+                params={
+                    "newClientOrderId": decision.signal.symbol.replace("/", "")
+                    + uuid.uuid4().hex[:8],
+                },
+            )
+            return order
+        except Exception as err:
+            logger.exception("testnet_order_failed", symbol=symbol, error=str(err))
+            await self._alerts.risk_alert("testnet_order_failed", {
+                "symbol": symbol,
+                "error": str(err),
+            })
+            return None
+        finally:
+            await exchange.close()
 
     # ── Single cycle ──────────────────────────────────────────────────────
 

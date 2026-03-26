@@ -275,6 +275,93 @@ class TestPaperExecution:
         assert len(loop._portfolio.positions) == 1
         alerts.trade_opened.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_live_execute_requires_testnet(self):
+        from nexus_alpha.core.trading_loop import (
+            TradingDecision,
+            TradingLoopOrchestrator,
+        )
+
+        config = _make_config(trading_mode=TradingMode.SMALL_LIVE)
+        alerts = MagicMock()
+        alerts.trade_opened = AsyncMock()
+        alerts.risk_alert = AsyncMock()
+
+        loop = TradingLoopOrchestrator(
+            config=config,
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=alerts,
+        )
+
+        loop._get_latest_price = MagicMock(return_value=65000.0)
+        loop._risk_validator = MagicMock()
+        loop._risk_validator.validate.return_value = MagicMock(
+            passed=True, checks_failed=[]
+        )
+
+        decision = TradingDecision(
+            signal=_make_fused_signal(direction=0.6),
+            debate_verdict=None,
+            target_weight=0.05,
+            position_size_usd=5000.0,
+            approved=True,
+        )
+
+        await loop._execute_decision(decision)
+
+        alerts.risk_alert.assert_called_once()
+        alerts.trade_opened.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_live_execute_uses_binance_testnet(self):
+        from nexus_alpha.core.trading_loop import (
+            TradingDecision,
+            TradingLoopOrchestrator,
+        )
+
+        config = _make_config(
+            trading_mode=TradingMode.SMALL_LIVE,
+            binance={
+                "testnet": True,
+                "api_key": "test-key",
+                "api_secret": "test-secret",
+            },
+        )
+        alerts = MagicMock()
+        alerts.trade_opened = AsyncMock()
+        alerts.risk_alert = AsyncMock()
+
+        loop = TradingLoopOrchestrator(
+            config=config,
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=alerts,
+        )
+
+        loop._get_latest_price = MagicMock(return_value=65000.0)
+        loop._risk_validator = MagicMock()
+        loop._risk_validator.validate.return_value = MagicMock(
+            passed=True, checks_failed=[]
+        )
+        loop._submit_testnet_order = AsyncMock(
+            return_value={"id": "test-123", "status": "open"}
+        )
+
+        decision = TradingDecision(
+            signal=_make_fused_signal(direction=0.6),
+            debate_verdict=None,
+            target_weight=0.05,
+            position_size_usd=5000.0,
+            approved=True,
+        )
+
+        await loop._execute_decision(decision)
+
+        loop._submit_testnet_order.assert_awaited_once()
+        alerts.trade_opened.assert_called_once()
+        alerts.risk_alert.assert_not_called()
+
 
 class TestRunAndStop:
     @pytest.mark.asyncio

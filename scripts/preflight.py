@@ -92,6 +92,11 @@ def check_config_loads() -> None:
         else:
             _warn("Binance credentials empty (paper mode only)")
 
+        if config.binance.testnet:
+            _ok("Binance testnet enabled")
+        elif config.is_live:
+            _warn("Binance testnet disabled (real exchange if live)")
+
     except Exception as e:
         _fail(f"Config load failed: {e}")
 
