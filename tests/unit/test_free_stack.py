@@ -131,6 +131,107 @@ class TestSentimentPipelineRunner:
         mock_pipe.setex.assert_called()
         mock_pipe.execute.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_collect_raw_articles_includes_reddit(self, monkeypatch):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        monkeypatch.setenv("REDDIT_SUBREDDITS", "CryptoCurrency")
+        monkeypatch.setenv("REDDIT_POST_LIMIT", "2")
+
+        monkeypatch.setattr(
+            "nexus_alpha.data.sentiment_pipeline.fetch_all_rss_feeds",
+            AsyncMock(return_value=[]),
+        )
+        monkeypatch.setattr(
+            "nexus_alpha.data.sentiment_pipeline.fetch_new_posts",
+            AsyncMock(
+                return_value=[
+                    {
+                        "title": "Bitcoin breaks higher",
+                        "selftext": "BTC momentum is strong",
+                        "url": "https://reddit.test/post1",
+                        "score": 320,
+                        "num_comments": 88,
+                        "author": "tester",
+                    }
+                ]
+            ),
+        )
+
+        articles = await runner._collect_raw_articles()
+
+        assert len(articles) == 1
+        assert articles[0]["source"] == "reddit:CryptoCurrency"
+        assert articles[0]["score"] == 320
+
+    def test_article_weight_boosts_high_engagement_reddit(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        base_weight = runner._article_weight({"source": "coindesk"}, 0.7)
+        reddit_weight = runner._article_weight(
+            {"source": "reddit:CryptoCurrency", "score": 500, "num_comments": 200},
+            0.7,
+        )
+
+        assert reddit_weight > base_weight
+
+    @pytest.mark.asyncio
+    async def test_run_once_uses_reddit_articles_in_aggregation(self, monkeypatch):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+        cfg = NexusConfig()
+        runner = SentimentPipelineRunner(cfg)
+
+        mock_pipeline = MagicMock()
+        mock_pipeline.process_articles = AsyncMock(
+            return_value=[
+                {
+                    "title": "Bitcoin trend is bullish",
+                    "text": "BTC rally continues",
+                    "source": "reddit:CryptoCurrency",
+                    "score": 500,
+                    "num_comments": 120,
+                    "sentiment": {"score": 0.8, "confidence": 0.9},
+                }
+            ]
+        )
+
+        monkeypatch.setattr(runner, "_ensure_sentiment_pipeline", lambda: mock_pipeline)
+        monkeypatch.setattr(
+            runner,
+            "_collect_raw_articles",
+            AsyncMock(
+                return_value=[
+                    {
+                        "title": "Bitcoin trend is bullish",
+                        "text": "BTC rally continues",
+                        "source": "reddit:CryptoCurrency",
+                        "score": 500,
+                        "num_comments": 120,
+                    }
+                ]
+            ),
+        )
+        monkeypatch.setattr(
+            "nexus_alpha.data.sentiment_pipeline.get_current_fear_greed",
+            AsyncMock(return_value={"value": 60}),
+        )
+
+        scores = await runner._run_once()
+
+        assert "BTC" in scores
+        assert scores["BTC"].score > 0.5
+        assert scores["BTC"].source_count == 1
+
 
 # ─── LiveMarketIngestor ───────────────────────────────────────────────────────
 

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,10 +29,12 @@ from typing import Any
 
 from nexus_alpha.config import NexusConfig
 from nexus_alpha.data.free_sources import (
+    CRYPTO_SUBREDDITS,
     fetch_all_rss_feeds,
     get_cryptopanic_news,
     get_current_fear_greed,
 )
+from nexus_alpha.data.reddit_client import fetch_new_posts
 from nexus_alpha.logging import get_logger
 
 logger = get_logger(__name__)
@@ -93,6 +96,107 @@ class SentimentPipelineRunner:
 
         # Lazy-imported to allow startup without GPU
         self._sentiment_pipeline: Any = None
+
+    async def _collect_rss_articles(self) -> list[dict[str, Any]]:
+        articles: list[dict[str, Any]] = []
+        try:
+            rss_articles = await fetch_all_rss_feeds(max_age_minutes=30)
+            for article in rss_articles:
+                articles.append(
+                    {
+                        "title": article.title,
+                        "text": article.summary,
+                        "source": article.source,
+                        "url": article.url,
+                    }
+                )
+        except Exception as err:
+            logger.warning("rss_fetch_error", error=str(err))
+        return articles
+
+    async def _collect_cryptopanic_articles(self) -> list[dict[str, Any]]:
+        cryptopanic_token = os.getenv("CRYPTOPANIC_API_TOKEN", "")
+        if not cryptopanic_token:
+            return []
+
+        try:
+            cp_items = await get_cryptopanic_news(cryptopanic_token)
+            return [
+                {
+                    "title": item.get("title", ""),
+                    "text": item.get("title", ""),
+                    "source": "cryptopanic",
+                    "url": item.get("url", ""),
+                    "votes": item.get("votes", {}),
+                }
+                for item in cp_items
+            ]
+        except Exception as err:
+            logger.warning("cryptopanic_fetch_error", error=str(err))
+            return []
+
+    async def _collect_reddit_articles(self) -> list[dict[str, Any]]:
+        subreddits_raw = os.getenv("REDDIT_SUBREDDITS", "")
+        subreddits = [
+            item.strip()
+            for item in subreddits_raw.split(",")
+            if item.strip()
+        ] or CRYPTO_SUBREDDITS
+        post_limit = int(os.getenv("REDDIT_POST_LIMIT", "15"))
+
+        tasks = [fetch_new_posts(subreddit, limit=post_limit) for subreddit in subreddits]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        articles: list[dict[str, Any]] = []
+        for subreddit, batch in zip(subreddits, results):
+            if isinstance(batch, Exception):
+                logger.warning("reddit_fetch_error", subreddit=subreddit, error=str(batch))
+                continue
+
+            for post in batch:
+                title = str(post.get("title", "")).strip()
+                body = str(post.get("selftext", "")).strip()
+                if not title:
+                    continue
+                articles.append(
+                    {
+                        "title": title,
+                        "text": body[:1000],
+                        "source": f"reddit:{subreddit}",
+                        "url": post.get("url", ""),
+                        "score": int(post.get("score", 0) or 0),
+                        "num_comments": int(post.get("num_comments", 0) or 0),
+                        "author": post.get("author"),
+                    }
+                )
+
+        return articles
+
+    async def _collect_raw_articles(self) -> list[dict[str, Any]]:
+        rss_articles, cryptopanic_articles, reddit_articles = await asyncio.gather(
+            self._collect_rss_articles(),
+            self._collect_cryptopanic_articles(),
+            self._collect_reddit_articles(),
+        )
+        raw_articles = rss_articles + cryptopanic_articles + reddit_articles
+        logger.info(
+            "sentiment_sources_collected",
+            rss_articles=len(rss_articles),
+            cryptopanic_articles=len(cryptopanic_articles),
+            reddit_articles=len(reddit_articles),
+            total_articles=len(raw_articles),
+        )
+        return raw_articles
+
+    def _article_weight(self, article: dict[str, Any], confidence: float) -> float:
+        weight = max(confidence, 0.1)
+        source = str(article.get("source", ""))
+        if source.startswith("reddit:"):
+            score = max(int(article.get("score", 0) or 0), 0)
+            num_comments = max(int(article.get("num_comments", 0) or 0), 0)
+            engagement_boost = min(2.0, 1.0 + (score / 500.0) + (num_comments / 200.0))
+            return weight * engagement_boost
+        return weight
 
     def _ensure_sentiment_pipeline(self) -> Any:
         if self._sentiment_pipeline is None:
@@ -173,36 +277,7 @@ class SentimentPipelineRunner:
         """Single pipeline run: fetch → score → aggregate → write."""
         pipeline = self._ensure_sentiment_pipeline()
 
-        # Collect articles from all free sources
-        raw_articles: list[dict[str, Any]] = []
-
-        # 1. RSS feeds (unlimited, no key needed)
-        try:
-            rss_articles = await fetch_all_rss_feeds(max_age_minutes=30)
-            for a in rss_articles:
-                raw_articles.append({
-                    "title": a.title,
-                    "text": a.summary,
-                    "source": a.source,
-                    "url": a.url,
-                })
-        except Exception as err:
-            logger.warning("rss_fetch_error", error=str(err))
-
-        # 2. CryptoPanic (50/hour free)
-        cryptopanic_token = os.getenv("CRYPTOPANIC_API_TOKEN", "")
-        if cryptopanic_token:
-            try:
-                cp_items = await get_cryptopanic_news(cryptopanic_token)
-                for item in cp_items:
-                    raw_articles.append({
-                        "title": item.get("title", ""),
-                        "text": item.get("title", ""),
-                        "source": "cryptopanic",
-                        "url": item.get("url", ""),
-                    })
-            except Exception as err:
-                logger.warning("cryptopanic_fetch_error", error=str(err))
+        raw_articles = await self._collect_raw_articles()
 
         # 3. Fear & Greed (macro sentiment — unlimited free)
         fear_greed_score = 0.0
@@ -225,10 +300,11 @@ class SentimentPipelineRunner:
             sentiment = article.get("sentiment", {})
             score = float(sentiment.get("score", 0.0))
             confidence = float(sentiment.get("confidence", 0.5))
+            article_weight = self._article_weight(article, confidence)
             assets = _extract_assets(article.get("title", "") + " " + article.get("text", ""))
             for asset in assets:
                 if asset in TRACKED_ASSETS:
-                    asset_scores[asset].append((score, confidence))
+                    asset_scores[asset].append((score, article_weight))
 
         # Weighted average (confidence-weighted)
         result: dict[str, SentimentScore] = {}
@@ -295,10 +371,6 @@ class SentimentPipelineRunner:
 
     def stop(self) -> None:
         self._running = False
-
-
-import os  # noqa: E402 — moved here to avoid circular at module level
-
 
 if __name__ == "__main__":
     import sys

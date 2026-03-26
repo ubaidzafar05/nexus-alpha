@@ -181,7 +181,7 @@ class RedditClient:
                     })
                 return posts
             except Exception as e:
-                logger.exception("rss_parse_error", error=str(e))
+                logger.exception("rss_parse_error: %s", str(e))
                 return []
 
 
