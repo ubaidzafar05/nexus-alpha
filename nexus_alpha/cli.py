@@ -684,6 +684,26 @@ def train(ctx: click.Context, symbols: str | None, timeframe: str) -> None:
     click.echo("\n✅ Models saved to data/checkpoints/")
 
 
+@cli.command("train-all")
+@click.option("--symbols", default=None, help="Comma-separated symbols")
+@click.pass_context
+def train_all(ctx: click.Context, symbols: str | None) -> None:
+    """Train ML models on all timeframes (1h, 4h, 1d)."""
+    from nexus_alpha.learning.offline_trainer import train_all_symbols
+
+    symbol_list = symbols.split(",") if symbols else None
+    for tf in ["1h", "4h", "1d"]:
+        click.echo(f"\n🧠 Training {tf} models...")
+        results = train_all_symbols(symbols=symbol_list, timeframe=tf)
+        for sym, stats in results.items():
+            if "error" in stats:
+                click.echo(f"  ⚠️  {sym}: {stats['error']}")
+            else:
+                dir_acc = stats.get("test_direction_accuracy", 0)
+                click.echo(f"  ✅ {sym}: direction accuracy={dir_acc:.1%}")
+    click.echo("\n✅ All models saved to data/checkpoints/")
+
+
 @cli.command()
 @click.option("--symbol", default="BTC/USDT", help="Symbol to train on")
 @click.option("--episodes", default=100, help="Number of training episodes")

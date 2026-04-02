@@ -61,6 +61,18 @@ MAX_OPEN_POSITIONS = 3         # Max simultaneous positions
 MAX_TOTAL_EXPOSURE_PCT = 0.50  # Max 50% of NAV in open positions
 COOLDOWN_SECONDS = 300         # 5 min between trades on same symbol
 DATA_MAX_AGE_SECONDS = 300     # Skip symbol if price older than 5 min
+MAX_DRAWDOWN_SCALE_THRESHOLD = 0.05  # Start scaling down after 5% drawdown
+MAX_DRAWDOWN_HALT = 0.15       # Stop trading after 15% drawdown
+PARTIAL_TP_FRACTION = 0.5      # Close 50% at take-profit, trail the rest
+MOMENTUM_LOOKBACK = 5          # Candles to check for momentum direction
+MIN_VOLUME_RATIO = 0.5         # Min volume vs 20-period average to trade
+
+# Crypto correlation clusters — highly correlated pairs share exposure budget
+CORRELATION_CLUSTERS = {
+    "layer1": {"BTCUSDT", "ETHUSDT", "SOLUSDT"},  # Move together
+    "altcoin": {"BNBUSDT", "ADAUSDT"},
+}
+MAX_CLUSTER_POSITIONS = 2  # Max positions from same correlation cluster
 
 
 @dataclass
@@ -154,17 +166,21 @@ class TradingLoopOrchestrator:
     # ── ML model loading ──────────────────────────────────────────────────
 
     def _init_ml_models(self) -> None:
-        """Load trained ML models from checkpoints if available."""
+        """Load trained ML models from checkpoints if available (1h, 4h, 1d)."""
         from pathlib import Path
         ckpt_dir = Path("data/checkpoints")
         symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT"]
+        timeframes = ["1h", "4h", "1d"]
         for sym in symbols:
             ccxt_sym = sym.replace("USDT", "_USDT")
-            predictor = LightweightPredictor(target_horizon="target_1h")
-            ckpt_path = ckpt_dir / f"lightweight_{ccxt_sym}_1h.pkl"
-            if predictor.load(ckpt_path):
-                self._ml_predictors[sym] = predictor
-                logger.info("ml_model_loaded", symbol=sym)
+            for tf in timeframes:
+                # All models predict 1-candle-ahead return (target_1h = 1 candle)
+                predictor = LightweightPredictor(target_horizon="target_1h")
+                ckpt_path = ckpt_dir / f"lightweight_{ccxt_sym}_{tf}.pkl"
+                if predictor.load(ckpt_path):
+                    key = sym if tf == "1h" else f"{sym}_{tf}"
+                    self._ml_predictors[key] = predictor
+                    logger.info("ml_model_loaded", symbol=sym, timeframe=tf)
 
         if self._ml_predictors:
             logger.info("ml_models_ready", count=len(self._ml_predictors))
@@ -345,6 +361,176 @@ class TradingLoopOrchestrator:
         except Exception:
             return None
 
+    # ── B3: Position correlation check ────────────────────────────────────
+
+    def _cluster_for_symbol(self, symbol: str) -> str | None:
+        for cluster_name, members in CORRELATION_CLUSTERS.items():
+            if symbol in members:
+                return cluster_name
+        return None
+
+    def _cluster_position_count(self, symbol: str) -> int:
+        """Count how many open positions share this symbol's correlation cluster."""
+        cluster = self._cluster_for_symbol(symbol)
+        if cluster is None:
+            return 0
+        members = CORRELATION_CLUSTERS[cluster]
+        return sum(1 for p in self._portfolio.positions if p.symbol in members)
+
+    # ── B4: Drawdown-based position scaling ───────────────────────────────
+
+    def _drawdown_scale_factor(self) -> float:
+        """Reduce position size after drawdowns. Returns 0.0–1.0 multiplier."""
+        if self._portfolio.nav <= 0:
+            return 0.0
+        initial_nav = self._portfolio.nav - self._portfolio.total_realized_pnl
+        if initial_nav <= 0:
+            initial_nav = self._portfolio.nav
+        drawdown = 1.0 - (self._portfolio.nav / initial_nav) if initial_nav > self._portfolio.nav else 0.0
+        if drawdown >= MAX_DRAWDOWN_HALT:
+            return 0.0
+        if drawdown >= MAX_DRAWDOWN_SCALE_THRESHOLD:
+            # Linear scale from 1.0 at threshold to 0.2 at halt
+            fraction = (drawdown - MAX_DRAWDOWN_SCALE_THRESHOLD) / (MAX_DRAWDOWN_HALT - MAX_DRAWDOWN_SCALE_THRESHOLD)
+            return max(0.2, 1.0 - fraction * 0.8)
+        return 1.0
+
+    # ── E1: Volume confirmation ───────────────────────────────────────────
+
+    def _volume_confirms(self, symbol: str) -> bool:
+        """Check that recent volume is above average — avoid trading into thin liquidity."""
+        df = self._build_feature_dataframe(symbol)
+        if df is None or len(df) < 25:
+            return True  # Can't check, allow
+        try:
+            vol = pd.to_numeric(df["volume"], errors="coerce")
+            avg_20 = vol.rolling(20).mean().iloc[-1]
+            current = vol.iloc[-1]
+            if avg_20 <= 0:
+                return True
+            return (current / avg_20) >= MIN_VOLUME_RATIO
+        except Exception:
+            return True
+
+    # ── E2: Momentum confirmation (anti falling-knife) ────────────────────
+
+    def _momentum_confirms(self, symbol: str, direction: float) -> bool:
+        """Don't buy into falling prices or sell into rising prices."""
+        df = self._build_feature_dataframe(symbol)
+        if df is None or len(df) < MOMENTUM_LOOKBACK + 1:
+            return True
+        try:
+            close = pd.to_numeric(df["close"], errors="coerce")
+            recent_return = (close.iloc[-1] / close.iloc[-MOMENTUM_LOOKBACK] - 1)
+            # If buying, recent price should not be falling sharply
+            if direction > 0 and recent_return < -0.03:
+                return False
+            # If selling, recent price should not be rising sharply
+            if direction < 0 and recent_return > 0.03:
+                return False
+            return True
+        except Exception:
+            return True
+
+    # ── C1-C4: Multi-timeframe alignment ──────────────────────────────────
+
+    def _multi_timeframe_alignment(self, symbol: str, direction_1h: float) -> float:
+        """
+        Check if higher timeframes agree with the 1h signal direction.
+        Returns an alignment score 0.0–1.0 (1.0 = all timeframes agree).
+        Loads 4h and 1d ML model predictions if available.
+        """
+        scores = [1.0]  # 1h always counts as aligned with itself
+
+        # Check 4h model
+        predictor_4h = self._ml_predictors.get(f"{symbol}_4h")
+        if predictor_4h:
+            df_4h = self._build_feature_dataframe(symbol)
+            if df_4h is not None:
+                pred = predictor_4h.predict(df_4h)
+                if pred:
+                    agrees = (pred["signal"] > 0 and direction_1h > 0) or (
+                        pred["signal"] < 0 and direction_1h < 0
+                    )
+                    scores.append(1.0 if agrees else 0.0)
+
+        # Check 1d model
+        predictor_1d = self._ml_predictors.get(f"{symbol}_1d")
+        if predictor_1d:
+            df_1d = self._build_feature_dataframe(symbol)
+            if df_1d is not None:
+                pred = predictor_1d.predict(df_1d)
+                if pred:
+                    agrees = (pred["signal"] > 0 and direction_1h > 0) or (
+                        pred["signal"] < 0 and direction_1h < 0
+                    )
+                    scores.append(1.0 if agrees else 0.0)
+
+        # Also check simple price trend as proxy
+        df = self._build_feature_dataframe(symbol)
+        if df is not None and len(df) > 24:
+            close = pd.to_numeric(df["close"], errors="coerce")
+            # 24h trend direction
+            trend_24h = close.iloc[-1] / close.iloc[-24] - 1 if close.iloc[-24] > 0 else 0
+            agrees = (trend_24h > 0 and direction_1h > 0) or (trend_24h < 0 and direction_1h < 0)
+            scores.append(1.0 if agrees else 0.3)
+
+        return sum(scores) / len(scores)
+
+    # ── D4: Daily P&L summary ─────────────────────────────────────────────
+
+    async def _send_daily_summary(self) -> None:
+        """Send daily P&L summary to Telegram (called once per day)."""
+        summary = self._trade_logger.get_performance_summary()
+        nav = self._portfolio.nav
+        cash = self._portfolio.cash
+        n_pos = self._portfolio.position_count
+        exposure = self._total_exposure_pct()
+        unrealized = sum(p.unrealized_pnl for p in self._portfolio.positions)
+
+        msg = (
+            f"📊 *Daily Summary*\n"
+            f"NAV: ${nav:,.2f}\n"
+            f"Cash: ${cash:,.2f}\n"
+            f"Positions: {n_pos}\n"
+            f"Exposure: {exposure:.1%}\n"
+            f"Unrealized P&L: ${unrealized:,.2f}\n"
+            f"Realized P&L: ${self._portfolio.total_realized_pnl:,.2f}\n"
+        )
+        if summary:
+            msg += (
+                f"Total trades: {summary.get('total_trades', 0)}\n"
+                f"Win rate: {summary.get('win_rate', 0):.1%}\n"
+                f"Avg P&L: ${summary.get('avg_pnl', 0):.2f}\n"
+            )
+        await self._alerts.risk_alert("daily_summary", {"message": msg})
+
+    # ── D5: ML performance tracking ───────────────────────────────────────
+
+    def _track_ml_performance(self) -> dict:
+        """Track how well ML predictions matched actual price moves."""
+        results = {}
+        for symbol, predictor in self._ml_predictors.items():
+            if "_" in symbol and symbol.split("_")[1] in ("4h", "1d"):
+                continue  # Skip multi-timeframe models for now
+            df = self._build_feature_dataframe(symbol)
+            if df is None or len(df) < 10:
+                continue
+            pred = predictor.predict(df)
+            if not pred:
+                continue
+            close = pd.to_numeric(df["close"], errors="coerce")
+            actual_return = close.iloc[-1] / close.iloc[-2] - 1 if close.iloc[-2] > 0 else 0
+            predicted_dir = "up" if pred["signal"] > 0 else "down"
+            actual_dir = "up" if actual_return > 0 else "down"
+            results[symbol] = {
+                "predicted": predicted_dir,
+                "actual": actual_dir,
+                "correct": predicted_dir == actual_dir,
+                "confidence": pred["confidence"],
+            }
+        return results
+
     # ── Redis for price/sentiment ─────────────────────────────────────────
 
     def _init_redis(self) -> None:
@@ -506,6 +692,9 @@ class TradingLoopOrchestrator:
         raw_size_pct = min(kelly * cb_multiplier, self._config.risk.max_single_position_pct)
         if verdict and verdict.synthesis_recommendation == "reduce_size":
             raw_size_pct *= 0.5
+
+        # B4: Scale down after drawdowns
+        raw_size_pct *= self._drawdown_scale_factor()
 
         position_usd = nav * raw_size_pct
         return max(0.0, position_usd)
@@ -694,49 +883,65 @@ class TradingLoopOrchestrator:
         if hasattr(exchange, "set_sandbox_mode"):
             exchange.set_sandbox_mode(True)
 
+        # D1: Retry with exponential backoff
+        max_retries = 3
         try:
-            markets = await exchange.load_markets()
-            exchange_symbol = self._exchange_symbol(symbol)
-            market = markets[exchange_symbol]
-            normalized_price, normalized_quantity = self._normalize_testnet_order_request(
-                exchange=exchange,
-                market=market,
-                symbol=exchange_symbol,
-                quantity=quantity,
-                price=price,
-            )
-            balance = await exchange.fetch_balance()
-            normalized_quantity = self._cap_quantity_to_available_balance(
-                exchange=exchange,
-                market=market,
-                symbol=exchange_symbol,
-                side=side,
-                quantity=normalized_quantity,
-                price=normalized_price,
-                balance=balance,
-            )
-            if normalized_quantity <= 0:
-                logger.warning("testnet_order_skipped_insufficient_balance", symbol=symbol, side=side.value)
-                return None
-            order = await exchange.create_order(
-                exchange_symbol,
-                "limit",
-                side.value,
-                normalized_quantity,
-                normalized_price,
-                params={
-                    "newClientOrderId": decision.signal.symbol.replace("/", "")
-                    + uuid.uuid4().hex[:8],
-                },
-            )
-            return order
-        except Exception as err:
-            logger.exception("testnet_order_failed", symbol=symbol, error=str(err))
-            await self._alerts.risk_alert("testnet_order_failed", {
-                "symbol": symbol,
-                "error": str(err),
-            })
-            return None
+            for attempt in range(max_retries):
+                try:
+                    markets = await exchange.load_markets()
+                    exchange_symbol = self._exchange_symbol(symbol)
+                    market = markets[exchange_symbol]
+                    normalized_price, normalized_quantity = self._normalize_testnet_order_request(
+                        exchange=exchange,
+                        market=market,
+                        symbol=exchange_symbol,
+                        quantity=quantity,
+                        price=price,
+                    )
+                    balance = await exchange.fetch_balance()
+                    normalized_quantity = self._cap_quantity_to_available_balance(
+                        exchange=exchange,
+                        market=market,
+                        symbol=exchange_symbol,
+                        side=side,
+                        quantity=normalized_quantity,
+                        price=normalized_price,
+                        balance=balance,
+                    )
+                    if normalized_quantity <= 0:
+                        logger.warning("testnet_order_skipped_insufficient_balance", symbol=symbol, side=side.value)
+                        return None
+                    order = await exchange.create_order(
+                        exchange_symbol,
+                        "limit",
+                        side.value,
+                        normalized_quantity,
+                        normalized_price,
+                        params={
+                            "newClientOrderId": decision.signal.symbol.replace("/", "")
+                            + uuid.uuid4().hex[:8],
+                        },
+                    )
+                    return order
+                except Exception as err:
+                    if attempt < max_retries - 1:
+                        wait = 2 ** attempt  # 1s, 2s
+                        logger.warning(
+                            "testnet_order_retry",
+                            symbol=symbol,
+                            attempt=attempt + 1,
+                            wait=wait,
+                            error=str(err),
+                        )
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.exception("testnet_order_failed", symbol=symbol, error=str(err))
+                        await self._alerts.risk_alert("testnet_order_failed", {
+                            "symbol": symbol,
+                            "error": str(err),
+                            "attempts": max_retries,
+                        })
+                        return None
         finally:
             await exchange.close()
 
@@ -879,16 +1084,39 @@ class TradingLoopOrchestrator:
                 positions_to_close.append((pos, current_price, "time_exit_48h"))
 
         for pos, exit_price, reason in positions_to_close:
-            notional = pos.quantity * exit_price
-            pnl = (exit_price - pos.entry_price) * pos.quantity
+            # B5: Partial take-profit — close PARTIAL_TP_FRACTION at TP, trail the rest
+            close_quantity = pos.quantity
+            is_partial = False
+            if reason == "take_profit" and pos.quantity > 0:
+                partial_qty = pos.quantity * PARTIAL_TP_FRACTION
+                remaining_qty = pos.quantity - partial_qty
+                if remaining_qty * exit_price >= MIN_POSITION_USD:
+                    close_quantity = partial_qty
+                    is_partial = True
+
+            notional = close_quantity * exit_price
+            pnl = (exit_price - pos.entry_price) * close_quantity
             if pos.side == OrderSide.SELL:
                 pnl = -pnl
 
             # Update portfolio
             self._portfolio.cash += notional
             self._portfolio.total_realized_pnl += pnl
-            if pos in self._portfolio.positions:
-                self._portfolio.positions.remove(pos)
+
+            if is_partial:
+                # Keep position open with reduced quantity and no TP (trail from here)
+                pos.quantity -= close_quantity
+                pos.take_profit = None  # Will be recomputed with tighter trailing
+                logger.info(
+                    "partial_take_profit",
+                    symbol=pos.symbol,
+                    closed_qty=f"{close_quantity:.6f}",
+                    remaining_qty=f"{pos.quantity:.6f}",
+                    pnl=f"${pnl:.2f}",
+                )
+            else:
+                if pos in self._portfolio.positions:
+                    self._portfolio.positions.remove(pos)
 
             # Log the closed trade for learning
             open_trades = self._trade_logger.get_open_trades()
@@ -901,12 +1129,12 @@ class TradingLoopOrchestrator:
                     )
                     break
 
-            pnl_pct = pnl / (pos.entry_price * pos.quantity) * 100 if pos.entry_price * pos.quantity > 0 else 0
+            pnl_pct = pnl / (pos.entry_price * close_quantity) * 100 if pos.entry_price * close_quantity > 0 else 0
 
             logger.info(
                 "position_closed",
                 symbol=pos.symbol,
-                reason=reason,
+                reason=reason + ("_partial" if is_partial else ""),
                 pnl=f"${pnl:.2f}",
                 pnl_pct=f"{pnl_pct:.2f}%",
                 exit_price=f"{exit_price:.2f}",
@@ -916,7 +1144,7 @@ class TradingLoopOrchestrator:
                 "symbol": pos.symbol,
                 "pnl": f"${pnl:.2f}",
                 "pnl_pct": f"{pnl_pct:.2f}%",
-                "reason": reason,
+                "reason": reason + ("_partial" if is_partial else ""),
             })
 
     # ── Single cycle ──────────────────────────────────────────────────────
@@ -952,7 +1180,14 @@ class TradingLoopOrchestrator:
         # 2. Check exits BEFORE generating new signals
         await self._check_position_exits()
 
-        # 3. Check if we can even take new positions
+        # 3. B4: Check drawdown halt
+        dd_factor = self._drawdown_scale_factor()
+        if dd_factor <= 0:
+            logger.warning("trading_halted_drawdown", msg="Drawdown exceeds max threshold")
+            self._save_portfolio()
+            return
+
+        # 4. Check if we can even take new positions
         if self._portfolio.position_count >= MAX_OPEN_POSITIONS:
             logger.debug(
                 "max_positions_reached",
@@ -971,7 +1206,7 @@ class TradingLoopOrchestrator:
             self._save_portfolio()
             return
 
-        # 4. Generate signals
+        # 5. Generate signals
         signals = self._generate_signals(symbols)
         if not signals:
             self._save_portfolio()
@@ -979,7 +1214,7 @@ class TradingLoopOrchestrator:
 
         self._metrics.last_signal_at = time.monotonic()
 
-        # 5. Process signals with ALL guards
+        # 6. Process signals with ALL guards
         for fused in signals:
             # Guard: duplicate position check
             if self._has_open_position(fused.symbol):
@@ -999,6 +1234,25 @@ class TradingLoopOrchestrator:
                 logger.warning("skip_stale_data", symbol=fused.symbol)
                 continue
 
+            # Guard: B3 — correlation cluster limit
+            if self._cluster_position_count(fused.symbol) >= MAX_CLUSTER_POSITIONS:
+                self._metrics.orders_rejected += 1
+                cluster = self._cluster_for_symbol(fused.symbol) or "unknown"
+                logger.debug("skip_cluster_limit", symbol=fused.symbol, cluster=cluster)
+                continue
+
+            # Guard: E1 — volume confirmation
+            if not self._volume_confirms(fused.symbol):
+                self._metrics.orders_rejected += 1
+                logger.debug("skip_low_volume", symbol=fused.symbol)
+                continue
+
+            # Guard: E2 — momentum confirmation (no falling knives)
+            if not self._momentum_confirms(fused.symbol, fused.direction):
+                self._metrics.orders_rejected += 1
+                logger.debug("skip_momentum_mismatch", symbol=fused.symbol)
+                continue
+
             # Guard: max positions re-check (could have filled during this loop)
             if self._portfolio.position_count >= MAX_OPEN_POSITIONS:
                 break
@@ -1015,11 +1269,19 @@ class TradingLoopOrchestrator:
 
             # Blend sentiment into signal confidence
             adjusted_confidence = fused.confidence * 0.8 + abs(sentiment) * 0.2
+
+            # C1-C4: Multi-timeframe alignment boost/penalty
+            mtf_alignment = self._multi_timeframe_alignment(fused.symbol, fused.direction)
+            adjusted_confidence *= (0.5 + 0.5 * mtf_alignment)  # 50-100% of base confidence
+
             fused = FusedSignal(
                 symbol=fused.symbol,
                 direction=fused.direction,
                 confidence=min(adjusted_confidence, 1.0),
-                contributing_signals=fused.contributing_signals,
+                contributing_signals={
+                    **fused.contributing_signals,
+                    "mtf_alignment": mtf_alignment,
+                },
                 timestamp=fused.timestamp,
             )
 
@@ -1062,13 +1324,26 @@ class TradingLoopOrchestrator:
                 if rejection_reason:
                     logger.info("trade_rejected", symbol=fused.symbol, reason=rejection_reason)
 
-        # 6. Periodic online learning
+        # 7. Periodic online learning
         if self._online_learner.should_retrain():
             stats = self._online_learner.retrain_from_journal(self._trade_logger)
             if stats:
                 await self._alerts.risk_alert("model_retrained", stats)
 
-        # 7. Save portfolio state every cycle
+        # 8. D5: Track ML performance every 100 cycles
+        if self._metrics.ticks_processed > 0 and self._metrics.ticks_processed % 100 == 0:
+            ml_perf = self._track_ml_performance()
+            if ml_perf:
+                logger.info("ml_performance", results=ml_perf)
+
+        # 9. D4: Daily P&L summary (every ~1440 cycles at 60s interval = 24h)
+        if self._metrics.ticks_processed > 0 and self._metrics.ticks_processed % 1440 == 0:
+            try:
+                await self._send_daily_summary()
+            except Exception as err:
+                logger.warning("daily_summary_failed", error=str(err))
+
+        # 10. Save portfolio state every cycle
         self._save_portfolio()
 
     # ── Main loop ─────────────────────────────────────────────────────────

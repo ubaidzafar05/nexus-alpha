@@ -267,13 +267,18 @@ def train_all_symbols(
 ) -> dict[str, dict]:
     """Train lightweight models for all symbols. Returns per-symbol stats."""
     symbols = symbols or ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "ADA/USDT"]
+    # Map timeframe to target column — targets are candle-offsets
+    # On 1h data: target_1h = 1 candle = 1h ahead
+    # On 4h data: target_1h = 1 candle = 4h ahead (good for 4h models)
+    # On 1d data: target_1h = 1 candle = 1d ahead
+    target_col = "target_1h"
     results = {}
 
     for symbol in symbols:
-        predictor = LightweightPredictor(target_horizon="target_1h")
+        predictor = LightweightPredictor(target_horizon=target_col)
         try:
             stats = predictor.train(symbol=symbol, timeframe=timeframe)
-            predictor.save(CHECKPOINT_DIR / f"lightweight_{symbol.replace('/', '_')}_1h.pkl")
+            predictor.save(CHECKPOINT_DIR / f"lightweight_{symbol.replace('/', '_')}_{timeframe}.pkl")
             results[symbol] = stats
         except FileNotFoundError:
             logger.warning("no_data_for_training", symbol=symbol, timeframe=timeframe)
