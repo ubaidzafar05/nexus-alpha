@@ -53,3 +53,9 @@ Thumbs.db
 *.pem
 *.key
 secrets/
+
+# Learning pipeline data (large files)
+data/ohlcv/*.parquet
+data/checkpoints/*.pkl
+data/checkpoints/*.pt
+data/trade_logs/*.db

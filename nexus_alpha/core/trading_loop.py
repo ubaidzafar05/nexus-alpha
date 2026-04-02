@@ -12,18 +12,25 @@ modules are stateless or independently testable.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import json as _json
+
+import numpy as np
 import pandas as pd
 
 from nexus_alpha.agents.debate import AgentDebateProtocol, DebateContext
 from nexus_alpha.alerts.telegram import TelegramAlerts
 from nexus_alpha.config import NexusConfig, TradingMode
 from nexus_alpha.execution.execution_engine import OrderManagementSystem
+from nexus_alpha.learning.historical_data import build_features
+from nexus_alpha.learning.offline_trainer import LightweightPredictor, OnlineLearner
+from nexus_alpha.learning.trade_logger import TradeLogger, TradeRecord
 from nexus_alpha.logging import get_logger
 from nexus_alpha.portfolio.optimizer import (
     HierarchicalRiskParityOptimizer,
@@ -115,6 +122,12 @@ class TradingLoopOrchestrator:
             circuit_breaker=circuit_breaker,
         )
 
+        # ── Learning pipeline ─────────────────────────────────────────────
+        self._trade_logger = TradeLogger()
+        self._ml_predictors: dict[str, LightweightPredictor] = {}
+        self._online_learner = OnlineLearner(retrain_interval_hours=6)
+        self._init_ml_models()
+
         # State
         self._running = False
         self._metrics = LoopMetrics()
@@ -123,6 +136,53 @@ class TradingLoopOrchestrator:
     @property
     def metrics(self) -> LoopMetrics:
         return self._metrics
+
+    # ── ML model loading ──────────────────────────────────────────────────
+
+    def _init_ml_models(self) -> None:
+        """Load trained ML models from checkpoints if available."""
+        from pathlib import Path
+        ckpt_dir = Path("data/checkpoints")
+        symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT"]
+        for sym in symbols:
+            ccxt_sym = sym.replace("USDT", "_USDT")
+            predictor = LightweightPredictor(target_horizon="target_1h")
+            ckpt_path = ckpt_dir / f"lightweight_{ccxt_sym}_1h.pkl"
+            if predictor.load(ckpt_path):
+                self._ml_predictors[sym] = predictor
+                logger.info("ml_model_loaded", symbol=sym)
+
+        if self._ml_predictors:
+            logger.info("ml_models_ready", count=len(self._ml_predictors))
+        else:
+            logger.info("ml_models_not_available", msg="Run 'nexus train' to train models")
+
+    def _get_ml_prediction(self, symbol: str, df: pd.DataFrame) -> dict | None:
+        """Get ML prediction for a symbol if a trained model exists."""
+        predictor = self._ml_predictors.get(symbol)
+        if not predictor:
+            return None
+        try:
+            features = build_features(df)
+            feature_cols = [c for c in features.columns if not c.startswith("target_")]
+            if len(features) == 0:
+                return None
+            last_row = features[feature_cols].iloc[-1].values.astype(np.float32)
+            return predictor.predict(last_row)
+        except Exception as err:
+            logger.warning("ml_prediction_error", symbol=symbol, error=repr(err))
+            return None
+
+    def _get_feature_vector(self, symbol: str, df: pd.DataFrame) -> list[float] | None:
+        """Extract the current feature vector for trade logging."""
+        try:
+            features = build_features(df)
+            feature_cols = [c for c in features.columns if not c.startswith("target_")]
+            if len(features) == 0:
+                return None
+            return features[feature_cols].iloc[-1].tolist()
+        except Exception:
+            return None
 
     # ── Redis for price/sentiment ─────────────────────────────────────────
 
@@ -189,6 +249,29 @@ class TradingLoopOrchestrator:
                 continue
             try:
                 fused = self._signal_engine.fuse(df, symbol)
+
+                # ── Blend ML prediction into signal ──
+                ml_pred = self._get_ml_prediction(symbol, df)
+                if ml_pred and abs(ml_pred["signal"]) > 0.01:
+                    ml_weight = 0.3 * ml_pred["confidence"]
+                    rule_weight = 1.0 - ml_weight
+                    blended_dir = (
+                        fused.direction * rule_weight + ml_pred["signal"] * ml_weight
+                    )
+                    blended_conf = (
+                        fused.confidence * rule_weight + ml_pred["confidence"] * ml_weight
+                    )
+                    fused = FusedSignal(
+                        symbol=fused.symbol,
+                        direction=float(np.clip(blended_dir, -1, 1)),
+                        confidence=min(blended_conf, 1.0),
+                        contributing_signals={
+                            **fused.contributing_signals,
+                            "ml_prediction": ml_pred["signal"],
+                        },
+                        timestamp=fused.timestamp,
+                    )
+
                 if abs(fused.direction) >= MIN_SIGNAL_CONFIDENCE:
                     signals.append(fused)
                     self._metrics.signals_generated += 1
@@ -340,13 +423,34 @@ class TradingLoopOrchestrator:
             )
         )
 
+        # ── Log trade for learning ──
+        df = self._build_feature_dataframe(symbol)
+        fv = self._get_feature_vector(symbol, df) if df is not None else None
+        sentiment = self._get_sentiment(symbol.replace("USDT", ""))
+
+        self._trade_logger.log_trade_open(TradeRecord(
+            trade_id=order_id,
+            timestamp=datetime.utcnow().isoformat(),
+            symbol=symbol,
+            side=side.value,
+            entry_price=price,
+            quantity=quantity,
+            notional_usd=notional,
+            signal_direction=decision.signal.direction,
+            signal_confidence=decision.signal.confidence,
+            contributing_signals=_json.dumps(decision.signal.contributing_signals),
+            sentiment_score=sentiment,
+            regime="unknown",
+            feature_vector=_json.dumps(fv) if fv else "[]",
+        ))
+
         await self._alerts.trade_opened({
             "pair": symbol,
             "direction": side.value,
             "entry_price": price,
             "size_usd": notional,
             "size_pct_nav": (notional / self._portfolio.nav) * 100,
-            "strategy": "signal_fusion",
+            "strategy": "signal_fusion" + (" + ML" if symbol in self._ml_predictors else ""),
             "regime": "unknown",
             "confidence": decision.signal.confidence,
         })
@@ -430,13 +534,35 @@ class TradingLoopOrchestrator:
             exchange.set_sandbox_mode(True)
 
         try:
-            await exchange.load_markets()
+            markets = await exchange.load_markets()
+            exchange_symbol = self._exchange_symbol(symbol)
+            market = markets[exchange_symbol]
+            normalized_price, normalized_quantity = self._normalize_testnet_order_request(
+                exchange=exchange,
+                market=market,
+                symbol=exchange_symbol,
+                quantity=quantity,
+                price=price,
+            )
+            balance = await exchange.fetch_balance()
+            normalized_quantity = self._cap_quantity_to_available_balance(
+                exchange=exchange,
+                market=market,
+                symbol=exchange_symbol,
+                side=side,
+                quantity=normalized_quantity,
+                price=normalized_price,
+                balance=balance,
+            )
+            if normalized_quantity <= 0:
+                logger.warning("testnet_order_skipped_insufficient_balance", symbol=symbol, side=side.value)
+                return None
             order = await exchange.create_order(
-                symbol,
+                exchange_symbol,
                 "limit",
                 side.value,
-                quantity,
-                price,
+                normalized_quantity,
+                normalized_price,
                 params={
                     "newClientOrderId": decision.signal.symbol.replace("/", "")
                     + uuid.uuid4().hex[:8],
@@ -452,6 +578,137 @@ class TradingLoopOrchestrator:
             return None
         finally:
             await exchange.close()
+
+    def _normalize_testnet_order_request(
+        self,
+        exchange: Any,
+        market: dict[str, Any],
+        symbol: str,
+        quantity: float,
+        price: float,
+    ) -> tuple[float, float]:
+        normalized_price = float(exchange.price_to_precision(symbol, price))
+        limits = market.get("limits") or {}
+        min_amount = float((limits.get("amount") or {}).get("min") or 0.0)
+        min_cost = float((limits.get("cost") or {}).get("min") or 0.0)
+
+        min_quantity_for_notional = 0.0
+        if normalized_price > 0 and min_cost > 0:
+            min_quantity_for_notional = (min_cost * 1.05) / normalized_price
+
+        raw_quantity = max(quantity, min_amount, min_quantity_for_notional)
+        normalized_quantity = float(exchange.amount_to_precision(symbol, raw_quantity))
+
+        if min_cost > 0 and normalized_quantity * normalized_price < min_cost:
+            step = float((market.get("precision") or {}).get("amount") or 0.0)
+            if step > 0:
+                normalized_quantity = math.ceil(raw_quantity / step) * step
+                normalized_quantity = float(
+                    exchange.amount_to_precision(symbol, normalized_quantity)
+                )
+
+        return normalized_price, normalized_quantity
+
+    def _exchange_symbol(self, symbol: str) -> str:
+        if "/" in symbol:
+            return symbol
+        if symbol.endswith("USDT") and len(symbol) > 4:
+            return f"{symbol[:-4]}/USDT"
+        return symbol
+
+    def _cap_quantity_to_available_balance(
+        self,
+        exchange: Any,
+        market: dict[str, Any],
+        symbol: str,
+        side: OrderSide,
+        quantity: float,
+        price: float,
+        balance: dict[str, Any],
+    ) -> float:
+        limits = market.get("limits") or {}
+        min_amount = float((limits.get("amount") or {}).get("min") or 0.0)
+        min_cost = float((limits.get("cost") or {}).get("min") or 0.0)
+        free_balances = balance.get("free") or {}
+
+        if side == OrderSide.BUY:
+            quote_asset = market.get("quote") or "USDT"
+            free_quote = float(free_balances.get(quote_asset) or 0.0)
+            max_quantity = (free_quote * 0.95 / price) if price > 0 else 0.0
+        else:
+            base_asset = market.get("base") or symbol.split("/", 1)[0]
+            max_quantity = float(free_balances.get(base_asset) or 0.0) * 0.99
+
+        capped_quantity = min(quantity, max_quantity)
+        if capped_quantity <= 0:
+            return 0.0
+
+        capped_quantity = float(exchange.amount_to_precision(symbol, capped_quantity))
+        if capped_quantity < min_amount:
+            return 0.0
+        if min_cost > 0 and capped_quantity * price < min_cost:
+            return 0.0
+        return capped_quantity
+
+    # ── Position exit tracking ────────────────────────────────────────────
+
+    async def _check_position_exits(self) -> None:
+        """
+        Check open positions for exit conditions (take-profit / stop-loss).
+        When a position exits, log the outcome for learning.
+        """
+        positions_to_close: list[tuple[Position, float, str]] = []
+
+        for pos in list(self._portfolio.positions):
+            current_price = self._get_latest_price(pos.symbol) or pos.current_price
+            pos.current_price = current_price
+
+            pnl_pct = (current_price - pos.entry_price) / pos.entry_price if pos.entry_price > 0 else 0.0
+            if pos.side == OrderSide.SELL:
+                pnl_pct = -pnl_pct
+
+            # Take profit at 3%, stop loss at -2%
+            if pnl_pct >= 0.03:
+                positions_to_close.append((pos, current_price, "take_profit"))
+            elif pnl_pct <= -0.02:
+                positions_to_close.append((pos, current_price, "stop_loss"))
+
+        for pos, exit_price, reason in positions_to_close:
+            notional = pos.quantity * exit_price
+            pnl = (exit_price - pos.entry_price) * pos.quantity
+            if pos.side == OrderSide.SELL:
+                pnl = -pnl
+
+            # Log the closed trade for learning
+            open_trades = self._trade_logger.get_open_trades()
+            for t in open_trades:
+                if t["symbol"] == pos.symbol:
+                    self._trade_logger.log_trade_close(
+                        trade_id=t["trade_id"],
+                        exit_price=exit_price,
+                        realized_pnl=pnl,
+                    )
+                    break
+
+            # Update portfolio
+            self._portfolio.cash += notional
+            if pos in self._portfolio.positions:
+                self._portfolio.positions.remove(pos)
+
+            logger.info(
+                "position_closed",
+                symbol=pos.symbol,
+                reason=reason,
+                pnl=f"{pnl:.2f}",
+                exit_price=f"{exit_price:.2f}",
+            )
+
+            await self._alerts.risk_alert(f"position_closed_{reason}", {
+                "symbol": pos.symbol,
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl / (pos.entry_price * pos.quantity) * 100, 2),
+                "reason": reason,
+            })
 
     # ── Single cycle ──────────────────────────────────────────────────────
 
@@ -535,6 +792,15 @@ class TradingLoopOrchestrator:
                 self._metrics.orders_rejected += 1
                 if rejection_reason:
                     logger.info("trade_rejected", symbol=fused.symbol, reason=rejection_reason)
+
+        # ── Check for position exits and log outcomes ──
+        await self._check_position_exits()
+
+        # ── Periodic online learning ──
+        if self._online_learner.should_retrain():
+            stats = self._online_learner.retrain_from_journal(self._trade_logger)
+            if stats:
+                await self._alerts.risk_alert("model_retrained", stats)
 
     # ── Main loop ─────────────────────────────────────────────────────────
 

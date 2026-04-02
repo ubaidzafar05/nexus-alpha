@@ -5,6 +5,7 @@ Usage:
     nexus run           Start the full trading system
     nexus paper         Start in paper trading mode
     nexus backtest      Run backtesting engine
+    nexus crawl-intel   Run Crawl4AI on curated intelligence targets
     nexus agents        Manage agent tournament
     nexus health        Show system health
     nexus adversarial   Run adversarial test suite
@@ -14,7 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
+import uuid
 from typing import Any
+
+import pandas as pd
 from urllib.parse import urlparse
 
 import click
@@ -255,29 +260,42 @@ def materialize_features(
     from nexus_alpha.data.streaming import FeatureStreamingLoop
 
     config: NexusConfig = ctx.obj["config"]
+    if prefer_kafka and seed_demo_ticks > 0:
+        suffix = uuid.uuid4().hex[:8]
+        config.kafka.tick_topic = f"{config.kafka.tick_topic}.demo.{suffix}"
+        config.kafka.signal_topic = f"{config.kafka.signal_topic}.demo.{suffix}"
+        config.kafka.consumer_group = f"{config.kafka.consumer_group}-demo-{suffix}"
     loop = FeatureStreamingLoop.from_config(config, prefer_kafka=prefer_kafka)
+    try:
+        if seed_demo_ticks > 0:
+            loop.seed_demo_ticks(n=seed_demo_ticks)
 
-    if seed_demo_ticks > 0:
-        loop.seed_demo_ticks(n=seed_demo_ticks)
+        if once:
+            stats = loop.run_cycle()
+            if loop.mode == "kafka" and seed_demo_ticks > 0 and stats.emitted_snapshots == 0:
+                for _ in range(10):
+                    time.sleep(0.2)
+                    stats = loop.run_cycle()
+                    if stats.emitted_snapshots >= seed_demo_ticks:
+                        break
+            slo_ok = loop.metrics()["slo"]["ok"]
+            click.echo(
+                "Feature worker run complete: "
+                f"{stats.emitted_snapshots} snapshots emitted ({loop.mode}) "
+                f"[slo_ok={slo_ok}]"
+            )
+            return
 
-    if once:
-        stats = loop.run_cycle()
-        slo_ok = loop.metrics()["slo"]["ok"]
+        metrics = loop.run_for(cycles=cycles, interval_seconds=interval_seconds)
+        worker = metrics["worker"]
+        slo_ok = metrics["slo"]["ok"]
         click.echo(
-            "Feature worker run complete: "
-            f"{stats.emitted_snapshots} snapshots emitted ({loop.mode}) "
-            f"[slo_ok={slo_ok}]"
+            "Feature worker loop complete: "
+            f"{worker['emitted_snapshots']} snapshots from {worker['processed_ticks']} ticks"
+            f" ({loop.mode}) [slo_ok={slo_ok}]"
         )
-        return
-
-    metrics = loop.run_for(cycles=cycles, interval_seconds=interval_seconds)
-    worker = metrics["worker"]
-    slo_ok = metrics["slo"]["ok"]
-    click.echo(
-        "Feature worker loop complete: "
-        f"{worker['emitted_snapshots']} snapshots from {worker['processed_ticks']} ticks"
-        f" ({loop.mode}) [slo_ok={slo_ok}]"
-    )
+    finally:
+        loop.close()
 
 
 @cli.command()
@@ -349,6 +367,94 @@ def live_ingest(ctx: click.Context, exchange: str, symbols: str, multi: bool) ->
     asyncio.run(_run())
 
 
+@cli.command("crawl-intel")
+@click.option("--url", "urls", multiple=True, help="Target URL to crawl (repeatable)")
+@click.option("--max-items", default=5, type=int, help="Max extracted items per target")
+@click.option("--publish/--no-publish", default=False, help="Publish reports to Kafka")
+@click.option("--json-output/--no-json-output", default=False, help="Print full JSON payloads")
+@click.pass_context
+def crawl_intel(
+    ctx: click.Context,
+    urls: tuple[str, ...],
+    max_items: int,
+    publish: bool,
+    json_output: bool,
+) -> None:
+    """Run curated Crawl4AI extraction against production news targets."""
+    import json
+
+    from nexus_alpha.intelligence.crawl4ai_agents import (
+        DEFAULT_CRAWL_TARGETS,
+        Crawl4AINewsAgent,
+        intelligence_report_payload,
+        publish_reports_to_kafka,
+    )
+
+    config: NexusConfig = ctx.obj["config"]
+    target_urls = list(urls) or list(DEFAULT_CRAWL_TARGETS)
+
+    async def _run() -> list[Any]:
+        agent = Crawl4AINewsAgent(
+            target_urls=target_urls,
+            ollama_base_url=config.llm.ollama_base_url,
+            model=config.llm.ollama_primary_model,
+            max_items_per_target=max_items,
+        )
+        return await agent.fetch()
+
+    reports = asyncio.run(_run())
+    click.echo(f"🕸️  Crawl complete: {len(reports)} reports from {len(target_urls)} target(s)")
+
+    if json_output:
+        click.echo(json.dumps([intelligence_report_payload(report) for report in reports], indent=2))
+    else:
+        for report in reports[:20]:
+            url = report.source_urls[0] if report.source_urls else ""
+            click.echo(f"- [{report.category.value}/{report.urgency.value}] {report.headline} :: {url}")
+
+    if publish:
+        published = publish_reports_to_kafka(
+            reports,
+            config.kafka.bootstrap_servers,
+            topic="nexus.intelligence",
+        )
+        click.echo(f"📨  Published {published} report(s) to nexus.intelligence")
+
+
+@cli.command("sentiment-once")
+@click.option("--max-articles", default=25, type=int, help="Cap articles processed in this one-off run")
+@click.option("--deep-analysis/--no-deep-analysis", default=False, help="Enable Ollama deep analysis during one-off validation")
+@click.pass_context
+def sentiment_once(ctx: click.Context, max_articles: int, deep_analysis: bool) -> None:
+    """Run one sentiment cycle and write results to Redis/Kafka."""
+    from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
+
+    config: NexusConfig = ctx.obj["config"]
+
+    async def _run() -> dict[str, Any]:
+        runner = SentimentPipelineRunner(config)
+        if not runner._init_redis():
+            raise RuntimeError("Redis unavailable for sentiment-once")
+        runner._init_kafka()
+        scores = await runner._run_once(
+            max_articles=max_articles,
+            deep_analysis_enabled=deep_analysis,
+        )
+        runner._write_to_redis(scores)
+        runner._publish_to_kafka(scores)
+        return {
+            "asset_count": len(scores),
+            "sample": {asset: score.score for asset, score in list(scores.items())[:5]},
+        }
+
+    result = asyncio.run(_run())
+    click.echo(
+        "Sentiment cycle complete: "
+        f"{result['asset_count']} assets scored "
+        f"sample={result['sample']}"
+    )
+
+
 # ─── Heartbeat — Periodic Health & Metrics ────────────────────────────────────
 
 
@@ -412,7 +518,6 @@ async def _run_system(config: NexusConfig) -> None:
     from nexus_alpha.alerts.telegram import TelegramAlerts
     from nexus_alpha.core.regime_oracle import RegimeOracle
     from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
-    from nexus_alpha.core.world_model import WorldModel
     from nexus_alpha.data.live_ingestor import MultiExchangeIngestor
     from nexus_alpha.data.sentiment_pipeline import SentimentPipelineRunner
     from nexus_alpha.infrastructure.self_healing import SystemWatchdog
@@ -427,7 +532,15 @@ async def _run_system(config: NexusConfig) -> None:
     # ── Core modules ──────────────────────────────────────────────────────────
     circuit_breaker = CircuitBreakerSystem(risk_config=config.risk)
     _regime_oracle = RegimeOracle(n_regimes=5, lookback_window=200)  # noqa: F841
-    _world_model = WorldModel(config.world_model)  # noqa: F841
+    _world_model = None
+    try:
+        from nexus_alpha.core.world_model import WorldModel
+
+        _world_model = WorldModel(config.world_model)  # noqa: F841
+    except ModuleNotFoundError as err:
+        if err.name not in {"torch", "torch.nn", "torch.optim", "torch.utils.data"}:
+            raise
+        logger.warning("world_model_disabled_missing_dependency", dependency=err.name)
     _tournament = TournamentOrchestrator(config.tournament)  # noqa: F841
 
     signal_engine = SignalFusionEngine()
@@ -467,10 +580,11 @@ async def _run_system(config: NexusConfig) -> None:
 
     try:
         initial_reports = await free_intel.run_all()
+        free_intel.publish_reports(initial_reports, bootstrap_servers=config.kafka.bootstrap_servers)
         logger.info("free_intelligence_bootstrap_complete", reports=len(initial_reports))
     except Exception as err:
-        logger.warning("free_intelligence_bootstrap_failed", error=str(err))
-    free_intel.start_scheduler()
+        logger.warning("free_intelligence_bootstrap_failed", error=repr(err))
+    free_intel.start_scheduler(bootstrap_servers=config.kafka.bootstrap_servers)
 
     health_status = await _collect_health_status(config)
 
@@ -519,11 +633,90 @@ async def _run_system(config: NexusConfig) -> None:
             t.cancel()
         await alerts.send("🛑 NEXUS-ALPHA stopped (manual shutdown)")
         logger.info("nexus_stopped")
+    finally:
+        await alerts.aclose()
 
 
 def main() -> None:
     """Entry point for the CLI."""
     cli(obj={})
+
+
+# ── Learning Pipeline CLI Commands ────────────────────────────────────────
+
+
+@cli.command()
+@click.option("--since", default="2022-01-01", help="Start date (YYYY-MM-DD)")
+@click.option("--symbols", default=None, help="Comma-separated symbols (e.g. BTC/USDT,ETH/USDT)")
+@click.pass_context
+def download_data(ctx: click.Context, since: str, symbols: str | None) -> None:
+    """Download historical OHLCV data for ML training (free, no API key needed)."""
+    from nexus_alpha.learning.historical_data import download_all
+
+    symbol_list = symbols.split(",") if symbols else None
+    click.echo(f"📥 Downloading historical data since {since}...")
+    results = asyncio.run(download_all(since=since, symbols=symbol_list))
+    for key, df in results.items():
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            click.echo(f"  ✅ {key}: {len(df)} candles")
+        else:
+            click.echo(f"  ⚠️  {key}: no data")
+    click.echo(f"\n✅ Downloaded {len(results)} datasets to data/ohlcv/")
+
+
+@cli.command()
+@click.option("--symbols", default=None, help="Comma-separated symbols")
+@click.option("--timeframe", default="1h", help="Timeframe to train on")
+@click.pass_context
+def train(ctx: click.Context, symbols: str | None, timeframe: str) -> None:
+    """Train ML models on downloaded historical data."""
+    from nexus_alpha.learning.offline_trainer import train_all_symbols
+
+    symbol_list = symbols.split(",") if symbols else None
+    click.echo(f"🧠 Training ML models on {timeframe} data...")
+    results = train_all_symbols(symbols=symbol_list, timeframe=timeframe)
+    for sym, stats in results.items():
+        if "error" in stats:
+            click.echo(f"  ⚠️  {sym}: {stats['error']}")
+        else:
+            dir_acc = stats.get("test_direction_accuracy", 0)
+            click.echo(f"  ✅ {sym}: direction accuracy={dir_acc:.1%}, R²={stats.get('test_r2', 0):.4f}")
+    click.echo("\n✅ Models saved to data/checkpoints/")
+
+
+@cli.command()
+@click.option("--symbol", default="BTC/USDT", help="Symbol to train on")
+@click.option("--episodes", default=100, help="Number of training episodes")
+@click.pass_context
+def train_rl(ctx: click.Context, symbol: str, episodes: int) -> None:
+    """Train RL agent on historical data (requires torch)."""
+    from nexus_alpha.learning.rl_environment import train_rl_agent
+
+    click.echo(f"🤖 Training RL agent on {symbol} for {episodes} episodes...")
+    result = train_rl_agent(symbol=symbol, n_episodes=episodes)
+    if "error" in result:
+        click.echo(f"  ❌ {result['error']}")
+    else:
+        click.echo(f"  ✅ Best reward: {result['best_reward']}")
+        click.echo(f"  ✅ Checkpoint: {result['checkpoint']}")
+
+
+@cli.command()
+@click.pass_context
+def trade_stats(ctx: click.Context) -> None:
+    """Show trading performance and learning stats."""
+    from nexus_alpha.learning.trade_logger import TradeLogger
+
+    tl = TradeLogger()
+    stats = tl.get_performance_summary()
+    click.echo("\n📊 Trading Performance:")
+    for key, val in stats.items():
+        click.echo(f"  {key}: {val}")
+
+    open_trades = tl.get_open_trades()
+    click.echo(f"\n📈 Open positions: {len(open_trades)}")
+    for t in open_trades[:5]:
+        click.echo(f"  {t['symbol']} {t['side']} @ {t['entry_price']:.2f}")
 
 
 if __name__ == "__main__":
