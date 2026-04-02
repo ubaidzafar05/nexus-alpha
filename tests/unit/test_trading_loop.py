@@ -282,7 +282,10 @@ class TestPaperExecution:
             TradingLoopOrchestrator,
         )
 
-        config = _make_config(trading_mode=TradingMode.SMALL_LIVE)
+        config = _make_config(
+            trading_mode=TradingMode.SMALL_LIVE,
+            binance={"testnet": False, "api_key": "", "api_secret": ""},
+        )
         alerts = MagicMock()
         alerts.trade_opened = AsyncMock()
         alerts.risk_alert = AsyncMock()

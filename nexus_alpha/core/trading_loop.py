@@ -55,7 +55,7 @@ from nexus_alpha.types import (
 logger = get_logger(__name__)
 
 DEBATE_NAV_THRESHOLD = 0.05  # 5% of NAV triggers debate
-MIN_SIGNAL_CONFIDENCE = 0.35  # Minimum confidence to even consider trading
+MIN_SIGNAL_CONFIDENCE = 0.08  # Low threshold OK — 12+ guards prevent over-trading
 MIN_POSITION_USD = 10.0
 MAX_OPEN_POSITIONS = 3         # Max simultaneous positions
 MAX_TOTAL_EXPOSURE_PCT = 0.50  # Max 50% of NAV in open positions
@@ -438,39 +438,50 @@ class TradingLoopOrchestrator:
         """
         Check if higher timeframes agree with the 1h signal direction.
         Returns an alignment score 0.0–1.0 (1.0 = all timeframes agree).
-        Loads 4h and 1d ML model predictions if available.
         """
         scores = [1.0]  # 1h always counts as aligned with itself
+
+        df = self._build_feature_dataframe(symbol)
+        if df is None:
+            return 1.0
 
         # Check 4h model
         predictor_4h = self._ml_predictors.get(f"{symbol}_4h")
         if predictor_4h:
-            df_4h = self._build_feature_dataframe(symbol)
-            if df_4h is not None:
-                pred = predictor_4h.predict(df_4h)
-                if pred:
-                    agrees = (pred["signal"] > 0 and direction_1h > 0) or (
-                        pred["signal"] < 0 and direction_1h < 0
-                    )
-                    scores.append(1.0 if agrees else 0.0)
+            try:
+                features = build_features(df)
+                feature_cols = [c for c in features.columns if not c.startswith("target_")]
+                if len(features) > 0:
+                    last_row = features[feature_cols].iloc[-1].values.astype(np.float32)
+                    pred = predictor_4h.predict(last_row)
+                    if pred and abs(pred["signal"]) > 0.01:
+                        agrees = (pred["signal"] > 0 and direction_1h > 0) or (
+                            pred["signal"] < 0 and direction_1h < 0
+                        )
+                        scores.append(1.0 if agrees else 0.0)
+            except Exception:
+                pass
 
         # Check 1d model
         predictor_1d = self._ml_predictors.get(f"{symbol}_1d")
         if predictor_1d:
-            df_1d = self._build_feature_dataframe(symbol)
-            if df_1d is not None:
-                pred = predictor_1d.predict(df_1d)
-                if pred:
-                    agrees = (pred["signal"] > 0 and direction_1h > 0) or (
-                        pred["signal"] < 0 and direction_1h < 0
-                    )
-                    scores.append(1.0 if agrees else 0.0)
+            try:
+                features = build_features(df)
+                feature_cols = [c for c in features.columns if not c.startswith("target_")]
+                if len(features) > 0:
+                    last_row = features[feature_cols].iloc[-1].values.astype(np.float32)
+                    pred = predictor_1d.predict(last_row)
+                    if pred and abs(pred["signal"]) > 0.01:
+                        agrees = (pred["signal"] > 0 and direction_1h > 0) or (
+                            pred["signal"] < 0 and direction_1h < 0
+                        )
+                        scores.append(1.0 if agrees else 0.0)
+            except Exception:
+                pass
 
         # Also check simple price trend as proxy
-        df = self._build_feature_dataframe(symbol)
-        if df is not None and len(df) > 24:
+        if len(df) > 24:
             close = pd.to_numeric(df["close"], errors="coerce")
-            # 24h trend direction
             trend_24h = close.iloc[-1] / close.iloc[-24] - 1 if close.iloc[-24] > 0 else 0
             agrees = (trend_24h > 0 and direction_1h > 0) or (trend_24h < 0 and direction_1h < 0)
             scores.append(1.0 if agrees else 0.3)
@@ -600,25 +611,47 @@ class TradingLoopOrchestrator:
                 # ── Blend ML prediction into signal ──
                 ml_pred = self._get_ml_prediction(symbol, df)
                 if ml_pred and abs(ml_pred["signal"]) > 0.01:
-                    ml_weight = 0.3 * ml_pred["confidence"]
-                    rule_weight = 1.0 - ml_weight
-                    blended_dir = (
-                        fused.direction * rule_weight + ml_pred["signal"] * ml_weight
-                    )
-                    blended_conf = (
-                        fused.confidence * rule_weight + ml_pred["confidence"] * ml_weight
-                    )
-                    fused = FusedSignal(
-                        symbol=fused.symbol,
-                        direction=float(np.clip(blended_dir, -1, 1)),
-                        confidence=min(blended_conf, 1.0),
-                        contributing_signals={
-                            **fused.contributing_signals,
-                            "ml_prediction": ml_pred["signal"],
-                        },
-                        timestamp=fused.timestamp,
-                    )
+                    ml_conf = ml_pred["confidence"]
+                    ml_signal = ml_pred["signal"]
+                    tech_dir = fused.direction
 
+                    # ML agrees with technical direction → boost confidence
+                    if (ml_signal > 0 and tech_dir > 0) or (ml_signal < 0 and tech_dir < 0):
+                        conf_boost = 0.15 * ml_conf
+                        fused = FusedSignal(
+                            symbol=fused.symbol,
+                            direction=tech_dir,
+                            confidence=min(fused.confidence + conf_boost, 1.0),
+                            contributing_signals={
+                                **fused.contributing_signals,
+                                "ml_prediction": ml_signal,
+                                "ml_agreement": True,
+                            },
+                            timestamp=fused.timestamp,
+                        )
+                    else:
+                        # ML disagrees → reduce confidence, keep direction
+                        conf_penalty = 0.10 * ml_conf
+                        fused = FusedSignal(
+                            symbol=fused.symbol,
+                            direction=tech_dir,
+                            confidence=max(fused.confidence - conf_penalty, 0.0),
+                            contributing_signals={
+                                **fused.contributing_signals,
+                                "ml_prediction": ml_signal,
+                                "ml_agreement": False,
+                            },
+                            timestamp=fused.timestamp,
+                        )
+
+                logger.info(
+                    "signal_computed",
+                    symbol=symbol,
+                    direction=f"{fused.direction:.4f}",
+                    confidence=f"{fused.confidence:.4f}",
+                    ml_blended=bool(ml_pred and abs(ml_pred.get("signal", 0)) > 0.01),
+                    passes_threshold=abs(fused.direction) >= MIN_SIGNAL_CONFIDENCE,
+                )
                 if abs(fused.direction) >= MIN_SIGNAL_CONFIDENCE:
                     signals.append(fused)
                     self._metrics.signals_generated += 1
@@ -1152,6 +1185,13 @@ class TradingLoopOrchestrator:
     async def _run_cycle(self) -> None:
         symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT"]
 
+        logger.info(
+            "cycle_start",
+            nav=f"{self._portfolio.nav:.0f}",
+            positions=self._portfolio.position_count,
+            exposure=f"{self._total_exposure_pct():.1%}",
+        )
+
         # 0. Recalculate NAV from live prices FIRST
         self._recalculate_nav()
 
@@ -1209,8 +1249,17 @@ class TradingLoopOrchestrator:
         # 5. Generate signals
         signals = self._generate_signals(symbols)
         if not signals:
+            logger.info("no_signals_generated", symbols_checked=len(symbols))
             self._save_portfolio()
             return
+
+        logger.info(
+            "signals_generated",
+            count=len(signals),
+            symbols=[s.symbol for s in signals],
+            directions=[f"{s.direction:.2f}" for s in signals],
+            confidences=[f"{s.confidence:.2f}" for s in signals],
+        )
 
         self._metrics.last_signal_at = time.monotonic()
 
@@ -1219,13 +1268,13 @@ class TradingLoopOrchestrator:
             # Guard: duplicate position check
             if self._has_open_position(fused.symbol):
                 self._metrics.orders_rejected += 1
-                logger.debug("skip_duplicate_position", symbol=fused.symbol)
+                logger.info("skip_duplicate_position", symbol=fused.symbol)
                 continue
 
             # Guard: cooldown check
             if self._is_on_cooldown(fused.symbol):
                 self._metrics.orders_rejected += 1
-                logger.debug("skip_cooldown", symbol=fused.symbol)
+                logger.info("skip_cooldown", symbol=fused.symbol)
                 continue
 
             # Guard: data freshness
@@ -1238,19 +1287,19 @@ class TradingLoopOrchestrator:
             if self._cluster_position_count(fused.symbol) >= MAX_CLUSTER_POSITIONS:
                 self._metrics.orders_rejected += 1
                 cluster = self._cluster_for_symbol(fused.symbol) or "unknown"
-                logger.debug("skip_cluster_limit", symbol=fused.symbol, cluster=cluster)
+                logger.info("skip_cluster_limit", symbol=fused.symbol, cluster=cluster)
                 continue
 
             # Guard: E1 — volume confirmation
             if not self._volume_confirms(fused.symbol):
                 self._metrics.orders_rejected += 1
-                logger.debug("skip_low_volume", symbol=fused.symbol)
+                logger.info("skip_low_volume", symbol=fused.symbol)
                 continue
 
             # Guard: E2 — momentum confirmation (no falling knives)
             if not self._momentum_confirms(fused.symbol, fused.direction):
                 self._metrics.orders_rejected += 1
-                logger.debug("skip_momentum_mismatch", symbol=fused.symbol)
+                logger.info("skip_momentum_mismatch", symbol=fused.symbol)
                 continue
 
             # Guard: max positions re-check (could have filled during this loop)
