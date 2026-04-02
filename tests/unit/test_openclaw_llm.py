@@ -59,6 +59,7 @@ def test_free_llm_client_from_config_uses_ollama_defaults() -> None:
     assert client._ollama_url == cfg.ollama_base_url  # noqa: SLF001
     assert client._primary == cfg.ollama_primary_model  # noqa: SLF001
     assert client._groq_key == cfg.groq_api_key.get_secret_value()  # noqa: SLF001
+    assert client._use_groq_fallback is False  # noqa: SLF001
 
 
 def test_llm_config_model_name_respects_explicit_override() -> None:
@@ -71,4 +72,3 @@ def test_llm_config_model_name_default_returns_ollama_primary() -> None:
     """model_name property returns ollama_primary_model by default."""
     cfg = LLMConfig()
     assert cfg.model_name == cfg.ollama_primary_model
-

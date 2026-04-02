@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from typing import TYPE_CHECKING, Protocol
 
 from nexus_alpha.data.contracts import EventKind, IngestionEvent
+from nexus_alpha.data.kafka_admin import ensure_topics_exist
 from nexus_alpha.logging import get_logger
 
 if TYPE_CHECKING:
@@ -17,6 +20,7 @@ logger = get_logger(__name__)
 
 class EventConsumer(Protocol):
     def poll(self, max_messages: int = 100, timeout: float = 0.2) -> list[IngestionEvent]: ...
+    def close(self) -> None: ...
 
 
 class InMemoryEventConsumer:
@@ -42,6 +46,9 @@ class InMemoryEventConsumer:
                 break
         return pending
 
+    def close(self) -> None:
+        return None
+
 
 class KafkaEventConsumer:
     """Kafka consumer for ingestion events serialized as JSON envelopes."""
@@ -52,15 +59,25 @@ class KafkaEventConsumer:
         except ImportError as exc:
             raise RuntimeError("confluent_kafka is not available") from exc
 
+        ensure_topics_exist(bootstrap_servers, topics)
         self._consumer = Consumer(
             {
                 "bootstrap.servers": bootstrap_servers,
                 "group.id": group_id,
-                "auto.offset.reset": "latest",
+                "auto.offset.reset": "earliest",
             }
         )
         self._consumer.subscribe(topics)
         self._topics = topics
+        self._wait_for_assignment()
+
+    def _wait_for_assignment(self, timeout: float = 5.0) -> None:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self._consumer.poll(0.1)
+            if self._consumer.assignment():
+                return
+        logger.warning("kafka_consumer_assignment_timeout", topics=self._topics)
 
     def poll(self, max_messages: int = 100, timeout: float = 0.2) -> list[IngestionEvent]:
         events: list[IngestionEvent] = []
@@ -80,6 +97,9 @@ class KafkaEventConsumer:
                 logger.warning("kafka_consumer_decode_failed", reason=str(exc))
         return events
 
+    def close(self) -> None:
+        self._consumer.close()
+
 
 def build_tick_consumer(
     config: NexusConfig,
@@ -92,7 +112,7 @@ def build_tick_consumer(
             consumer = KafkaEventConsumer(
                 bootstrap_servers=config.kafka.bootstrap_servers,
                 topics=[config.kafka.tick_topic],
-                group_id=f"{config.kafka.consumer_group}-feature-worker",
+                group_id=f"{config.kafka.consumer_group}-feature-worker-{uuid.uuid4().hex[:8]}",
             )
             logger.info("event_consumer_selected", type="kafka", topics=[config.kafka.tick_topic])
             return consumer
@@ -103,4 +123,3 @@ def build_tick_consumer(
         raise RuntimeError("in_memory_bus is required when Kafka is unavailable")
     logger.info("event_consumer_selected", type="in_memory")
     return InMemoryEventConsumer(in_memory_bus, kinds={EventKind.TICK})
-

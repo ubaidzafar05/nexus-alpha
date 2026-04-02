@@ -12,7 +12,7 @@ Validates:
   ✓ Exchange credentials configured
   ✓ Ollama model availability (--full)
   ✓ Redis/Kafka/TimescaleDB reachable (--full)
-  ✓ Telegram bot functional (--full)
+  ✓ Telegram bot functional when configured (--full)
   ✓ Freqtrade strategy parseable
   ✓ Critical imports work
 """
@@ -23,6 +23,11 @@ import asyncio
 import importlib
 import os
 import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 CHECKS_PASSED = 0
 CHECKS_FAILED = 0
@@ -47,12 +52,27 @@ def _warn(msg: str) -> None:
     print(f"  ⚠️  {msg}")
 
 
+def _read_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip()
+    return values
+
+
+def _env_value(name: str, env_file_values: dict[str, str]) -> str:
+    return os.getenv(name) or env_file_values.get(name, "")
+
+
 def check_env_vars() -> None:
     print("\n── Environment Variables ──")
-    required = [
-        "BINANCE_API_KEY",
-        "BINANCE_API_SECRET",
-    ]
+    env_file_values = _read_env_file(ROOT / ".env")
+    trading_mode = _env_value("TRADING_MODE", env_file_values).lower() or "paper"
     recommended = [
         "GROQ_API_KEY",
         "TELEGRAM_BOT_TOKEN",
@@ -60,14 +80,17 @@ def check_env_vars() -> None:
         "CRYPTOPANIC_API_TOKEN",
         "ETHERSCAN_API_KEY",
     ]
-    for var in required:
-        if os.getenv(var):
+
+    for var in ("BINANCE_API_KEY", "BINANCE_API_SECRET"):
+        if _env_value(var, env_file_values):
             _ok(f"{var} set")
+        elif trading_mode == "paper":
+            _warn(f"{var} missing (paper mode)")
         else:
             _fail(f"{var} missing (required for live trading)")
 
     for var in recommended:
-        if os.getenv(var):
+        if _env_value(var, env_file_values):
             _ok(f"{var} set")
         else:
             _warn(f"{var} not set (recommended)")
@@ -84,8 +107,10 @@ def check_config_loads() -> None:
 
         if config.llm.has_groq:
             _ok("Groq fallback configured")
+        elif config.llm.use_groq_fallback:
+            _warn("Groq fallback enabled but API key missing")
         else:
-            _warn("Groq fallback not configured")
+            _ok("Groq fallback disabled (Ollama-only mode)")
 
         if config.binance.api_key.get_secret_value():
             _ok("Binance credentials present")
@@ -162,6 +187,8 @@ async def check_services_full() -> None:
         for svc, state in status.items():
             if state in {"ok", "configured"}:
                 _ok(f"{svc}: {state}")
+            elif svc == "telegram" and state == "not_configured":
+                _warn(f"{svc}: {state}")
             elif state == "degraded":
                 _warn(f"{svc}: {state}")
             else:

@@ -21,22 +21,22 @@ This module intentionally avoids adding asyncpraw to dependencies; it uses praw
 from __future__ import annotations
 
 import asyncio
-import json
-import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-logger = logging.getLogger(__name__)
+from nexus_alpha.logging import get_logger
+
+logger = get_logger(__name__)
 
 DEFAULT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "nexus-alpha/0.1 by anonymous")
 
 
 class RedditClient:
     def __init__(self) -> None:
-        self._client: Optional[praw.Reddit] = None
+        self._client: Any | None = None
         self._client_id = os.getenv("REDDIT_CLIENT_ID", "")
         self._client_secret = os.getenv("REDDIT_CLIENT_SECRET", "")
         self._username = os.getenv("REDDIT_USERNAME", "")
@@ -65,7 +65,7 @@ class RedditClient:
         return self._client
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8), retry=retry_if_exception_type(Exception))
-    async def fetch_new(self, subreddit: str, limit: int = 50) -> List[Dict[str, Any]]:
+    async def fetch_new(self, subreddit: str, limit: int = 50) -> list[dict[str, Any]]:
         """Fetch newest posts for a subreddit.
 
         Tries in order:
@@ -77,29 +77,29 @@ class RedditClient:
             try:
                 return await asyncio.to_thread(self._fetch_new_praw, subreddit, limit)
             except Exception as e:
-                logger.warning("praw_fetch_failed: %s", str(e))
+                logger.warning("praw_fetch_failed", subreddit=subreddit, error=repr(e))
 
         # Fallback: public JSON endpoint
         try:
             return await self._fetch_new_public_json(subreddit, limit)
         except Exception as e:
-            logger.warning("public_json_failed: %s", str(e))
+            logger.warning("public_json_failed", subreddit=subreddit, error=repr(e))
 
         # Final fallback: RSS
         try:
             return await asyncio.to_thread(self._fetch_new_rss, subreddit, limit)
         except Exception as e:
-            logger.exception("rss_fallback_failed: %s", str(e))
+            logger.exception("rss_fallback_failed", subreddit=subreddit, error=repr(e))
             raise
 
-    def _fetch_new_praw(self, subreddit: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def _fetch_new_praw(self, subreddit: str, limit: int = 50) -> list[dict[str, Any]]:
         reddit = self._ensure_praw()
         posts = []
         for p in reddit.subreddit(subreddit).new(limit=limit):
             posts.append(self._praw_post_to_dict(p))
         return posts
 
-    def _praw_post_to_dict(self, post: Any) -> Dict[str, Any]:
+    def _praw_post_to_dict(self, post: Any) -> dict[str, Any]:
         return {
             "id": getattr(post, "id", ""),
             "title": getattr(post, "title", ""),
@@ -111,7 +111,7 @@ class RedditClient:
             "author": getattr(getattr(post, "author", None), "name", None),
         }
 
-    async def _fetch_new_public_json(self, subreddit: str, limit: int = 50) -> List[Dict[str, Any]]:
+    async def _fetch_new_public_json(self, subreddit: str, limit: int = 50) -> list[dict[str, Any]]:
         url = f"https://www.reddit.com/r/{subreddit}/new.json?limit={limit}"
         headers = {"User-Agent": self._user_agent}
         async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
@@ -122,7 +122,7 @@ class RedditClient:
             posts = [self._json_child_to_post(c.get("data", {})) for c in items]
             return posts
 
-    def _json_child_to_post(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _json_child_to_post(self, data: dict[str, Any]) -> dict[str, Any]:
         return {
             "id": data.get("id"),
             "title": data.get("title"),
@@ -134,7 +134,7 @@ class RedditClient:
             "author": data.get("author"),
         }
 
-    def _fetch_new_rss(self, subreddit: str, limit: int = 50) -> List[Dict[str, Any]]:
+    def _fetch_new_rss(self, subreddit: str, limit: int = 50) -> list[dict[str, Any]]:
         """Parse RSS using feedparser if available, otherwise fallback to basic XML parsing."""
         url = f"https://www.reddit.com/r/{subreddit}/new/.rss"
         try:
@@ -181,12 +181,12 @@ class RedditClient:
                     })
                 return posts
             except Exception as e:
-                logger.exception("rss_parse_error: %s", str(e))
+                logger.exception("rss_parse_error", subreddit=subreddit, error=repr(e))
                 return []
 
 
 # Module-level convenience
-_default_client: Optional[RedditClient] = None
+_default_client: RedditClient | None = None
 
 
 def get_reddit_client() -> RedditClient:
@@ -196,6 +196,6 @@ def get_reddit_client() -> RedditClient:
     return _default_client
 
 
-async def fetch_new_posts(subreddit: str, limit: int = 50) -> List[Dict[str, Any]]:
+async def fetch_new_posts(subreddit: str, limit: int = 50) -> list[dict[str, Any]]:
     client = get_reddit_client()
     return await client.fetch_new(subreddit, limit)

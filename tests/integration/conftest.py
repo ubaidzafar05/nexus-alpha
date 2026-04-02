@@ -55,6 +55,10 @@ def kafka_stack() -> None:
     except Exception:
         pytest.skip("confluent_kafka not installed in this environment.")
 
+    if _wait_for_port("localhost", 9092, timeout_seconds=2.0):
+        yield
+        return
+
     project = "nexus_alpha_kafka_it"
     up_cmd = [
         "docker",
@@ -65,7 +69,6 @@ def kafka_stack() -> None:
         project,
         "up",
         "-d",
-        "zookeeper",
         "kafka",
     ]
     down_cmd = [
@@ -87,4 +90,3 @@ def kafka_stack() -> None:
     yield
 
     subprocess.run(down_cmd, check=False, cwd=ROOT)
-

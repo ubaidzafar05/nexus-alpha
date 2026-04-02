@@ -104,7 +104,7 @@
   },
 
   "freqai": {
-    "enabled": true,
+    "enabled": false,
     "model_save_type": "joblib",
     "train_period_days": 90,
     "backtest_period_days": 30,
@@ -114,6 +114,7 @@
     "feature_parameters": {
       "include_timeframes": ["1h", "4h", "1d"],
       "include_corr_pairlist": ["BTC/USDT", "ETH/USDT"],
+      "indicator_periods_candles": [14, 28, 50],
       "label_period_candles": 24,
       "include_shifted_candles": 3,
       "DI_threshold": 0.9,

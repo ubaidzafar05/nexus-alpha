@@ -34,3 +34,44 @@ def test_streaming_loop_metrics_shape() -> None:
     assert "slo" in metrics
     assert "feature_store" in metrics
     assert metrics["worker"]["emitted_snapshots"] >= 1
+
+
+def test_seed_demo_ticks_flushes_pipeline() -> None:
+    class StubPipeline:
+        def __init__(self) -> None:
+            self.published = 0
+            self.flush_calls = 0
+
+        def publish_tick(self, raw_tick: dict[str, object]) -> object:
+            del raw_tick
+            self.published += 1
+            return object()
+
+        def flush(self, timeout: float = 5.0) -> None:
+            del timeout
+            self.flush_calls += 1
+
+    class StubWorker:
+        def run_once(self, max_messages: int = 200) -> object:
+            del max_messages
+            raise AssertionError("worker should not run in seed_demo_ticks")
+
+        def metrics(self) -> dict[str, int]:
+            return {}
+
+    class StubFeatureStore:
+        def metrics(self) -> dict[str, int]:
+            return {}
+
+    pipeline = StubPipeline()
+    loop = FeatureStreamingLoop(
+        pipeline=pipeline,  # type: ignore[arg-type]
+        worker=StubWorker(),  # type: ignore[arg-type]
+        feature_store=StubFeatureStore(),  # type: ignore[arg-type]
+        mode="kafka",
+    )
+
+    loop.seed_demo_ticks(n=3)
+
+    assert pipeline.published == 3
+    assert pipeline.flush_calls == 1

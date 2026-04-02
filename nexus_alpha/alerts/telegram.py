@@ -17,6 +17,7 @@ Supports:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -85,14 +86,19 @@ class TelegramAlerts:
         self._last_sent: float = 0.0
         self._recent: deque[tuple[str, float]] = deque(maxlen=50)
         self._lock = asyncio.Lock()
+        self._client: httpx.AsyncClient | None = None
 
     @classmethod
-    def from_env(cls) -> TelegramAlerts:
+    def from_env(cls, env_file: str = ".env") -> TelegramAlerts:
         """Load credentials from environment variables."""
         import os
+        from pathlib import Path
 
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        from dotenv import dotenv_values
+
+        file_values = dotenv_values(Path(env_file)) if Path(env_file).exists() else {}
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "") or str(file_values.get("TELEGRAM_BOT_TOKEN", ""))
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "") or str(file_values.get("TELEGRAM_CHAT_ID", ""))
         if not token or not chat_id:
             logger.warning(
                 "telegram_not_configured",
@@ -136,8 +142,10 @@ class TelegramAlerts:
             return success
 
     async def _do_send(self, text: str) -> bool:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                client = self._get_client()
                 resp = await client.post(
                     f"{TELEGRAM_API}/bot{self._token}/sendMessage",
                     json={
@@ -148,9 +156,40 @@ class TelegramAlerts:
                 )
                 resp.raise_for_status()
                 return True
-        except Exception as err:
-            logger.warning("telegram_send_failed", error=str(err))
-            return False
+            except httpx.HTTPStatusError as err:
+                body = err.response.text[:300] if err.response is not None else ""
+                logger.warning("telegram_send_failed", error=repr(err), status_code=err.response.status_code if err.response else None, response_body=body)
+                return False
+            except httpx.TransportError as err:
+                await self._reset_client()
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                logger.warning("telegram_send_failed", error=repr(err))
+                return False
+            except Exception as err:
+                logger.warning("telegram_send_failed", error=repr(err))
+                return False
+        return False
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=10.0,
+                limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
+            )
+        return self._client
+
+    async def _reset_client(self) -> None:
+        if self._client is None:
+            return
+        client = self._client
+        self._client = None
+        with contextlib.suppress(Exception):
+            await client.aclose()
+
+    async def aclose(self) -> None:
+        await self._reset_client()
 
     # ── High-level alert methods ──────────────────────────────────────────────
 
@@ -230,5 +269,5 @@ class TelegramAlerts:
         if healthy:
             msg = f"✅ Ollama LLM server online\nModels: {', '.join(models or [])}"
         else:
-            msg = "⚠️ Ollama LLM server unreachable — falling back to Groq free tier"
+            msg = "⚠️ Ollama LLM server unreachable"
         await self.send(msg, AlertLevel.SYSTEM)

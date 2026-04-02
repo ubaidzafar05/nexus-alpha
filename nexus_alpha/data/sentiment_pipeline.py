@@ -200,6 +200,19 @@ class SentimentPipelineRunner:
         )
         return raw_articles
 
+    def _article_cap(self, max_articles: int | None = None) -> int | None:
+        if max_articles is not None:
+            return max_articles if max_articles > 0 else None
+        raw_value = os.getenv("SENTIMENT_MAX_ARTICLES_PER_CYCLE", "").strip()
+        if not raw_value:
+            return None
+        try:
+            parsed = int(raw_value)
+        except ValueError:
+            logger.warning("invalid_sentiment_article_cap", value=raw_value)
+            return None
+        return parsed if parsed > 0 else None
+
     def _article_weight(self, article: dict[str, Any], confidence: float) -> float:
         weight = max(confidence, 0.1)
         source = str(article.get("source", ""))
@@ -337,8 +350,11 @@ class SentimentPipelineRunner:
             details=details,
         )
 
-    def _ensure_sentiment_pipeline(self) -> Any:
-        if self._sentiment_pipeline is None:
+    def _ensure_sentiment_pipeline(self, deep_analysis_enabled: bool = True) -> Any:
+        if (
+            self._sentiment_pipeline is None
+            or getattr(self._sentiment_pipeline, "_deep_analysis_enabled", True) != deep_analysis_enabled
+        ):
             from nexus_alpha.intelligence.free_llm import FreeLLMClient
             from nexus_alpha.intelligence.sentiment import HybridSentimentPipeline
 
@@ -346,6 +362,7 @@ class SentimentPipelineRunner:
             self._sentiment_pipeline = HybridSentimentPipeline(
                 llm_client=llm,
                 finbert_model=self._config.llm.finbert_model_name,
+                deep_analysis_enabled=deep_analysis_enabled,
             )
         return self._sentiment_pipeline
 
@@ -411,15 +428,23 @@ class SentimentPipelineRunner:
                 value=payload,
             )
         self._kafka_producer.poll(0)
+        self._kafka_producer.flush(timeout=5.0)
 
-    async def _run_once(self) -> dict[str, SentimentScore]:
+    async def _run_once(
+        self,
+        max_articles: int | None = None,
+        deep_analysis_enabled: bool = True,
+    ) -> dict[str, SentimentScore]:
         """Single pipeline run: fetch → score → aggregate → write."""
-        pipeline = self._ensure_sentiment_pipeline()
+        pipeline = self._ensure_sentiment_pipeline(deep_analysis_enabled=deep_analysis_enabled)
 
         raw_articles, macro_factors = await asyncio.gather(
             self._collect_raw_articles(),
             self._collect_macro_factors(),
         )
+        article_cap = self._article_cap(max_articles)
+        if article_cap is not None:
+            raw_articles = raw_articles[:article_cap]
 
         if not raw_articles and macro_factors.source_count == 0:
             logger.info("no_articles_fetched_this_cycle")

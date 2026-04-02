@@ -65,6 +65,9 @@ class LiveMarketIngestor:
     DEFAULT_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "ADA/USDT"]
     RECONNECT_BASE_DELAY = 1.0
     RECONNECT_MAX_DELAY = 60.0
+    PRICE_TTL_SECONDS = 60 * 60
+    OHLCV_TTL_SECONDS = 6 * 60 * 60
+    OHLCV_MAX_ROWS = 500
 
     def __init__(
         self,
@@ -128,6 +131,7 @@ class LiveMarketIngestor:
             )
             # Poll to trigger delivery callbacks (non-blocking)
             self._producer.poll(0)
+        self._cache_tick(tick)
         self._stats.ticks_published += 1
         self._stats.last_tick_at = time.monotonic()
 
@@ -150,6 +154,106 @@ class LiveMarketIngestor:
             return float(value) if value else 0.0
         except Exception:
             return 0.0
+
+    def _should_cache_tick(self, tick: dict[str, Any]) -> bool:
+        # The trading loop reads symbol-only Redis keys (no exchange suffix), so
+        # keep the execution venue canonical to avoid mixing Binance and Bybit rows.
+        return self._exchange_id == "binance" and bool(self._redis)
+
+    def _cache_tick(self, tick: dict[str, Any]) -> None:
+        if not self._should_cache_tick(tick):
+            return
+
+        symbol = tick.get("symbol")
+        if not symbol:
+            return
+
+        try:
+            pipe = self._redis.pipeline()
+
+            if tick.get("schema") == "ohlcv_v1":
+                cached_rows = self._redis.get(f"ohlcv:{symbol}")
+                rows = json.loads(cached_rows) if cached_rows else []
+                candle = {
+                    "timestamp": tick["timestamp"],
+                    "open": tick["open"],
+                    "high": tick["high"],
+                    "low": tick["low"],
+                    "close": tick["close"],
+                    "volume": tick["volume"],
+                }
+                if rows and rows[-1].get("timestamp") == candle["timestamp"]:
+                    rows[-1] = candle
+                else:
+                    rows.append(candle)
+                rows = rows[-self.OHLCV_MAX_ROWS :]
+                pipe.setex(
+                    f"ohlcv:{symbol}",
+                    self.OHLCV_TTL_SECONDS,
+                    json.dumps(rows),
+                )
+                pipe.setex(
+                    f"price:{symbol}",
+                    self.PRICE_TTL_SECONDS,
+                    str(tick["close"]),
+                )
+            elif tick.get("schema") == "orderbook_v1":
+                bid_top = float(tick.get("bid_top", 0.0))
+                ask_top = float(tick.get("ask_top", 0.0))
+                if bid_top > 0 and ask_top > 0:
+                    mid_price = (bid_top + ask_top) / 2.0
+                    pipe.setex(
+                        f"price:{symbol}",
+                        self.PRICE_TTL_SECONDS,
+                        str(round(mid_price, 8)),
+                    )
+
+            pipe.execute()
+        except Exception as err:
+            logger.warning("redis_tick_cache_failed", symbol=symbol, error=str(err))
+
+    def _cache_ohlcv_window(self, symbol: str, ohlcv_rows: list[list[Any]]) -> None:
+        if not self._should_cache_tick({"symbol": symbol}):
+            return
+
+        try:
+            symbol_key = symbol.replace("/", "")
+            incoming_rows = [
+                {
+                    "timestamp": datetime.utcfromtimestamp(row[0] / 1000).isoformat(),
+                    "open": float(row[1]),
+                    "high": float(row[2]),
+                    "low": float(row[3]),
+                    "close": float(row[4]),
+                    "volume": float(row[5]),
+                }
+                for row in ohlcv_rows[-self.OHLCV_MAX_ROWS :]
+            ]
+            if not incoming_rows:
+                return
+
+            cached_rows = self._redis.get(f"ohlcv:{symbol_key}")
+            existing_rows = json.loads(cached_rows) if cached_rows else []
+            merged_by_ts = {row["timestamp"]: row for row in existing_rows}
+            for row in incoming_rows:
+                merged_by_ts[row["timestamp"]] = row
+            rows = [merged_by_ts[key] for key in sorted(merged_by_ts.keys())][-self.OHLCV_MAX_ROWS :]
+
+            latest_close = incoming_rows[-1]["close"]
+            pipe = self._redis.pipeline()
+            pipe.setex(
+                f"ohlcv:{symbol_key}",
+                self.OHLCV_TTL_SECONDS,
+                json.dumps(rows),
+            )
+            pipe.setex(
+                f"price:{symbol_key}",
+                self.PRICE_TTL_SECONDS,
+                str(latest_close),
+            )
+            pipe.execute()
+        except Exception as err:
+            logger.warning("redis_ohlcv_window_cache_failed", symbol=symbol, error=str(err))
 
     # ── Tick normalization ────────────────────────────────────────────────────
 
@@ -197,15 +301,66 @@ class LiveMarketIngestor:
             ) if bids and asks else 0.0,
         }
 
+    def _orderbook_depth(self) -> int:
+        if self._exchange_id == "bybit":
+            return 50
+        return 20
+
+    def _exchange_options(self) -> dict[str, Any]:
+        options: dict[str, Any] = {
+            "defaultType": "spot",
+        }
+        if self._exchange_id == "binance":
+            # Avoid probing unrelated derivatives endpoints during spot-only ingest.
+            options["loadAllOptions"] = False
+        if self._exchange_id == "bybit":
+            options["defaultSubType"] = "spot"
+        return options
+
+    def _stream_params(self) -> dict[str, Any]:
+        if self._exchange_id == "bybit":
+            # Bybit's websocket APIs need the category pinned for spot symbols.
+            return {"category": "spot"}
+        return {}
+
+    def _build_exchange_config(self) -> dict[str, Any]:
+        return {
+            "enableRateLimit": True,
+            "options": self._exchange_options(),
+        }
+
+    async def _ensure_markets_loaded(self, exchange: Any) -> None:
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                await exchange.load_markets()
+                return
+            except Exception as err:
+                last_error = err
+                if attempt == 0:
+                    await asyncio.sleep(1.0)
+                    continue
+                raise
+        if last_error is not None:
+            raise last_error
+
     # ── WebSocket streaming ───────────────────────────────────────────────────
 
     async def _stream_ohlcv(self, exchange: Any, symbol: str) -> None:
         """Stream 1-minute OHLCV for a symbol with auto-reconnect."""
         backoff = self.RECONNECT_BASE_DELAY
+        params = self._stream_params()
+        history_seeded = False
         while self._running:
             try:
-                ohlcv_list = await exchange.watch_ohlcv(symbol, "1m")
+                if not history_seeded:
+                    history = await exchange.fetch_ohlcv(symbol, "1m", limit=120)
+                    if history:
+                        self._cache_ohlcv_window(symbol, history)
+                    history_seeded = True
+                ohlcv_list = await exchange.watch_ohlcv(symbol, "1m", None, None, params)
                 if ohlcv_list:
+                    self._cache_ohlcv_window(symbol, ohlcv_list)
                     latest = ohlcv_list[-1]
                     tick = self._normalize_ohlcv(symbol, latest)
                     self._publish_tick(tick)
@@ -222,9 +377,10 @@ class LiveMarketIngestor:
     async def _stream_orderbook(self, exchange: Any, symbol: str) -> None:
         """Stream order book updates with auto-reconnect."""
         backoff = self.RECONNECT_BASE_DELAY
+        params = self._stream_params()
         while self._running:
             try:
-                ob = await exchange.watch_order_book(symbol, 20)
+                ob = await exchange.watch_order_book(symbol, self._orderbook_depth(), params)
                 tick = self._normalize_orderbook(symbol, ob)
                 self._publish_tick(tick)
                 backoff = self.RECONNECT_BASE_DELAY
@@ -255,44 +411,43 @@ class LiveMarketIngestor:
         self._init_kafka()
         self._init_redis()
         self._running = True
+        tasks: list[asyncio.Task[Any]] = []
 
-        exchange_config: dict[str, Any] = {
-            "enableRateLimit": True,
-            "options": {"defaultType": "spot"},
-        }
-        if self._api_key:
-            exchange_config["apiKey"] = self._api_key
-            exchange_config["secret"] = self._api_secret
-
-        exchange = getattr(ccxtpro, self._exchange_id)(exchange_config)
-        if self._use_testnet and hasattr(exchange, "set_sandbox_mode"):
-            exchange.set_sandbox_mode(True)
-            logger.info("exchange_sandbox_mode_enabled", exchange=self._exchange_id)
-
-        logger.info(
-            "live_ingestor_starting",
-            exchange=self._exchange_id,
-            symbols=self._symbols,
-            kafka_topic=self._kafka_topic,
-        )
-
-        # Create concurrent streams for all symbols
-        tasks = []
-        for symbol in self._symbols:
-            tasks.append(asyncio.create_task(self._stream_ohlcv(exchange, symbol)))
-            tasks.append(asyncio.create_task(self._stream_orderbook(exchange, symbol)))
-
-        # Stats reporter
-        tasks.append(asyncio.create_task(self._stats_reporter()))
-
+        exchange = getattr(ccxtpro, self._exchange_id)(self._build_exchange_config())
         try:
-            await asyncio.gather(*tasks)
-        except asyncio.CancelledError:
-            pass
+            if self._use_testnet:
+                logger.info(
+                    "exchange_testnet_execution_enabled",
+                    exchange=self._exchange_id,
+                    note="market-data ingestion remains on public endpoints",
+                )
+
+            logger.info(
+                "live_ingestor_starting",
+                exchange=self._exchange_id,
+                symbols=self._symbols,
+                kafka_topic=self._kafka_topic,
+            )
+            await self._ensure_markets_loaded(exchange)
+
+            # Create concurrent streams for all symbols
+            for symbol in self._symbols:
+                tasks.append(asyncio.create_task(self._stream_ohlcv(exchange, symbol)))
+                tasks.append(asyncio.create_task(self._stream_orderbook(exchange, symbol)))
+
+            # Stats reporter
+            tasks.append(asyncio.create_task(self._stats_reporter()))
+
+            try:
+                await asyncio.gather(*tasks)
+            except asyncio.CancelledError:
+                pass
         finally:
             self._running = False
             for t in tasks:
                 t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             await exchange.close()
             if self._producer:
                 self._producer.flush(timeout=5)
@@ -321,7 +476,7 @@ class MultiExchangeIngestor:
     Binance (spot) + Bybit (futures proxy) = better price discovery.
     """
 
-    EXCHANGE_CONFIGS = [
+    DEFAULT_EXCHANGE_CONFIGS = [
         {
             "exchange_id": "binance",
             "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "ADA/USDT"],
@@ -331,6 +486,9 @@ class MultiExchangeIngestor:
 
     def __init__(self, config: NexusConfig) -> None:
         self._config = config
+        exchange_configs = [self.DEFAULT_EXCHANGE_CONFIGS[0]]
+        if config.bybit.enabled:
+            exchange_configs.append(self.DEFAULT_EXCHANGE_CONFIGS[1])
         self._ingestors = [
             LiveMarketIngestor(
                 exchange_id=ec["exchange_id"],
@@ -340,7 +498,7 @@ class MultiExchangeIngestor:
                 redis_url=config.database.redis_url,
                 use_testnet=config.binance.testnet and ec["exchange_id"] == "binance",
             )
-            for ec in self.EXCHANGE_CONFIGS
+            for ec in exchange_configs
         ]
 
     async def run(self) -> None:

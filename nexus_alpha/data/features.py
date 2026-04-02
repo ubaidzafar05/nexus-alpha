@@ -77,6 +77,10 @@ class FeatureMaterializationWorker:
             "skipped_events": self._stats.skipped_events,
         }
 
+    def close(self) -> None:
+        self._pipeline.flush()
+        self._consumer.close()
+
     @staticmethod
     def _compute_features(tick: TickEventPayload) -> dict[str, float]:
         mid_price = (tick.bid + tick.ask) / 2

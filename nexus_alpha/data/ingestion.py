@@ -15,6 +15,7 @@ from nexus_alpha.data.contracts import (
     OHLCVEventPayload,
     TickEventPayload,
 )
+from nexus_alpha.data.kafka_admin import ensure_topics_exist
 from nexus_alpha.data.quality import DataQualityMonitor, QualityThresholds
 from nexus_alpha.logging import get_logger
 
@@ -26,6 +27,7 @@ logger = get_logger(__name__)
 
 class EventPublisher(Protocol):
     def publish(self, event: IngestionEvent) -> None: ...
+    def flush(self, timeout: float = 5.0) -> None: ...
     @property
     def total_events(self) -> int | None: ...
     @property
@@ -45,6 +47,9 @@ class InMemoryEventBus:
 
     def publish(self, event: IngestionEvent) -> None:
         self._events.append(event)
+
+    def flush(self, timeout: float = 5.0) -> None:
+        del timeout
 
     def latest(self, limit: int = 100) -> list[IngestionEvent]:
         return list(self._events)[-limit:]
@@ -75,6 +80,7 @@ class KafkaEventPublisher:
         except ImportError as exc:
             raise RuntimeError("confluent_kafka is not available") from exc
 
+        ensure_topics_exist(bootstrap_servers, [tick_topic, signal_topic])
         self._producer = Producer({"bootstrap.servers": bootstrap_servers})
         self._topics = {
             EventKind.TICK: tick_topic,
@@ -94,6 +100,9 @@ class KafkaEventPublisher:
         except Exception:
             self._failed_events += 1
             raise
+
+    def flush(self, timeout: float = 5.0) -> None:
+        self._producer.flush(timeout=timeout)
 
     @property
     def total_events(self) -> int:
@@ -198,6 +207,9 @@ class IngestionPipeline:
     @property
     def publisher(self) -> EventPublisher:
         return self._bus
+
+    def flush(self, timeout: float = 5.0) -> None:
+        self._bus.flush(timeout=timeout)
 
     def _build_event(
         self,

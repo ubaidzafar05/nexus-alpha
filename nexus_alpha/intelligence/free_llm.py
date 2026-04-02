@@ -1,10 +1,10 @@
 """
-Free LLM client — Ollama (local) primary, Groq free-tier cloud fallback.
+Free LLM client — Ollama local primary, with optional Groq fallback.
 
 Priority order:
   1. Ollama local server (qwen3:8b / deepseek-r1:8b) — zero cost, always-on
-  2. Groq free tier (llama-3.3-70b) — 6,000 req/day, fastest free cloud inference
-  3. Hard error if both unavailable
+  2. Optional Groq fallback if explicitly enabled
+  3. Hard error if Ollama is unavailable and fallback is disabled
 
 Usage::
     client = FreeLLMClient.from_config(config.llm)
@@ -14,8 +14,10 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import time
 from typing import Any
 
 import httpx
@@ -37,8 +39,7 @@ class FreeLLMClient:
     """
     Unified async LLM client using only free backends.
 
-    Ollama is the primary backend (local inference, runs on Oracle Cloud free VM).
-    Groq is the fallback (free tier: 6k req/day, 131k TPM, Llama-3.3-70b).
+    Ollama is the primary backend. Groq is optional and disabled by default.
     """
 
     def __init__(
@@ -48,6 +49,7 @@ class FreeLLMClient:
         fast_model: str,
         reasoning_model: str,
         embed_model: str,
+        use_groq_fallback: bool = False,
         groq_api_key: str = "",
         groq_model: str = "llama-3.3-70b-versatile",
         timeout: float = 60.0,
@@ -57,9 +59,11 @@ class FreeLLMClient:
         self._fast = fast_model
         self._reasoning = reasoning_model
         self._embed_model = embed_model
+        self._use_groq_fallback = use_groq_fallback
         self._groq_key = groq_api_key
         self._groq_model = groq_model
         self._timeout = timeout
+        self._last_ollama_warning_at = 0.0
 
     @classmethod
     def from_config(cls, cfg: LLMConfig) -> "FreeLLMClient":
@@ -69,6 +73,7 @@ class FreeLLMClient:
             fast_model=cfg.ollama_fast_model,
             reasoning_model=cfg.ollama_reasoning_model,
             embed_model=cfg.ollama_embed_model,
+            use_groq_fallback=cfg.use_groq_fallback,
             groq_api_key=cfg.groq_api_key.get_secret_value(),
             groq_model=cfg.groq_model,
         )
@@ -83,14 +88,14 @@ class FreeLLMClient:
         temperature: float = 0.1,
         max_tokens: int = 1024,
     ) -> str:
-        """Generate a text completion. Falls back to Groq if Ollama unavailable."""
+        """Generate a text completion. Uses Groq only if explicitly enabled."""
         chosen_model = model or self._primary
         try:
             return await self._ollama_complete(prompt, system, chosen_model, temperature, max_tokens)
         except Exception as err:
-            logger.warning("ollama_unavailable", error=str(err), fallback="groq")
-            if not self._groq_key:
-                raise RuntimeError("Ollama unavailable and no Groq API key configured") from err
+            self._log_ollama_warning(err)
+            if not (self._use_groq_fallback and self._groq_key):
+                raise RuntimeError("Ollama unavailable and Groq fallback is disabled") from err
             return await self._groq_complete(prompt, system, temperature, max_tokens)
 
     async def complete_json(
@@ -147,7 +152,19 @@ class FreeLLMClient:
                 models = [m["name"] for m in resp.json().get("models", [])]
                 return {"status": "ok", "backend": "ollama", "models": models}
         except Exception as err:
-            return {"status": "degraded", "backend": "groq" if self._groq_key else "none", "error": str(err)}
+            backend = "groq" if self._use_groq_fallback and self._groq_key else "none"
+            return {"status": "degraded", "backend": backend, "error": repr(err)}
+
+    def _log_ollama_warning(self, err: Exception) -> None:
+        now = time.monotonic()
+        if now - self._last_ollama_warning_at < 30.0:
+            return
+        self._last_ollama_warning_at = now
+        logger.warning(
+            "ollama_unavailable",
+            error=repr(err),
+            fallback="groq" if self._use_groq_fallback and self._groq_key else "disabled",
+        )
 
     # ── Ollama backend ───────────────────────────────────────────────────────
 
@@ -168,10 +185,23 @@ class FreeLLMClient:
             "options": {"temperature": temperature, "num_predict": max_tokens},
             "stream": False,
         }
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.post(f"{self._ollama_url}/api/chat", json=payload)
-            resp.raise_for_status()
-            return resp.json()["message"]["content"]
+        timeout = httpx.Timeout(self._timeout, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            last_error: Exception | None = None
+            for attempt in range(2):
+                try:
+                    resp = await client.post(f"{self._ollama_url}/api/chat", json=payload)
+                    resp.raise_for_status()
+                    return resp.json()["message"]["content"]
+                except Exception as err:
+                    last_error = err
+                    if attempt == 0:
+                        await asyncio.sleep(0.5)
+                        continue
+                    raise
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError("Ollama completion failed without an exception")
 
     # ── Groq fallback ─────────────────────────────────────────────────────────
 

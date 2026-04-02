@@ -144,13 +144,19 @@ class HybridSentimentPipeline:
         finbert_model: str = "ProsusAI/finbert",
         deep_analysis_confidence_threshold: float = 0.85,
         deep_analysis_sentiment_threshold: float = 0.6,
+        max_concurrent_deep_analyses: int = 2,
+        deep_analysis_enabled: bool = True,
     ) -> None:
         self._llm = llm_client
         self._finbert = FinBERTAnalyzer(finbert_model)
         self._deep_conf_threshold = deep_analysis_confidence_threshold
         self._deep_sent_threshold = deep_analysis_sentiment_threshold
+        self._deep_analysis_semaphore = asyncio.Semaphore(max_concurrent_deep_analyses)
+        self._deep_analysis_enabled = deep_analysis_enabled
 
     def _needs_deep_analysis(self, article: dict[str, Any], fb: SentimentResult) -> bool:
+        if not self._deep_analysis_enabled:
+            return False
         title_lower = article.get("title", "").lower()
         has_key_term = any(kw in title_lower for kw in _DEEP_ANALYSIS_KEYWORDS)
         high_confidence = fb.confidence > self._deep_conf_threshold
@@ -160,10 +166,11 @@ class HybridSentimentPipeline:
     async def _deep_analyze(self, article: dict[str, Any]) -> SentimentResult:
         text = f"{article.get('title', '')}\n{article.get('text', '')[:500]}"
         try:
-            data = await self._llm.complete_json(
-                _SENTIMENT_PROMPT.format(text=text),
-                system=_SENTIMENT_SYSTEM,
-            )
+            async with self._deep_analysis_semaphore:
+                data = await self._llm.complete_json(
+                    _SENTIMENT_PROMPT.format(text=text),
+                    system=_SENTIMENT_SYSTEM,
+                )
             return SentimentResult(
                 sentiment_score=float(data.get("sentiment_score", 0.0)),
                 confidence=float(data.get("confidence", 0.5)),
@@ -176,7 +183,7 @@ class HybridSentimentPipeline:
                 reasoning=data.get("reasoning", ""),
             )
         except Exception as err:
-            logger.warning("deep_analysis_failed", error=str(err))
+            logger.warning("deep_analysis_failed", error=repr(err))
             return SentimentResult(
                 sentiment_score=0.0, confidence=0.0, label="neutral", method="error"
             )

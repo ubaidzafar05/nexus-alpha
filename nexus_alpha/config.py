@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +34,7 @@ class ExchangeConfig(BaseSettings):
 
 class BybitConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BYBIT_")
+    enabled: bool = False
     api_key: SecretStr = SecretStr("")
     api_secret: SecretStr = SecretStr("")
 
@@ -42,7 +46,7 @@ class KrakenConfig(BaseSettings):
 
 
 class LLMConfig(BaseSettings):
-    """Free LLM stack: Ollama (local) primary, Groq free-tier cloud fallback."""
+    """Free LLM stack: Ollama local-first, with optional Groq fallback."""
 
     model_config = SettingsConfigDict(env_prefix="")
 
@@ -53,7 +57,8 @@ class LLMConfig(BaseSettings):
     ollama_reasoning_model: str = "deepseek-r1:8b"  # Debate / cross-validation
     ollama_embed_model: str = "nomic-embed-text"     # Free local embeddings
 
-    # Groq — free cloud fallback (6,000 req/day, 131k TPM, Llama-3.3-70b)
+    # Groq — optional cloud fallback. Disabled by default for pure Ollama mode.
+    use_groq_fallback: bool = False
     groq_api_key: SecretStr = SecretStr("")
     groq_model: str = "llama-3.3-70b-versatile"     # Free 70B model via Groq
 
@@ -84,7 +89,7 @@ class LLMConfig(BaseSettings):
 
     @property
     def has_groq(self) -> bool:
-        return bool(self.groq_api_key.get_secret_value())
+        return self.use_groq_fallback and bool(self.groq_api_key.get_secret_value())
 
 
 class DatabaseConfig(BaseSettings):
@@ -92,9 +97,21 @@ class DatabaseConfig(BaseSettings):
     timescaledb_url: SecretStr = SecretStr(
         "postgresql+asyncpg://nexus:changeme@localhost:5432/nexus_alpha"
     )
-    # Format: redis://:PASSWORD@host:port/db
-    # (password required — docker-compose sets REDIS_PASSWORD)
-    redis_url: str = "redis://:nexus_dev@localhost:6379/0"
+    # Format: redis://default:PASSWORD@host:port/db
+    redis_url: str = "redis://default:nexus_dev@localhost:6379/0"
+
+    @field_validator("redis_url", mode="before")
+    @classmethod
+    def _normalize_redis_url(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme != "redis" or parsed.password is None or parsed.username:
+            return value
+
+        netloc = parsed.hostname or "localhost"
+        if parsed.port is not None:
+            netloc = f"{netloc}:{parsed.port}"
+        netloc = f"default:{parsed.password}@{netloc}"
+        return urlunparse(parsed._replace(netloc=netloc))
 
 
 class KafkaConfig(BaseSettings):
@@ -215,4 +232,40 @@ class NexusConfig(BaseSettings):
 
 def load_config(env_file: str = ".env") -> NexusConfig:
     """Load configuration from environment. Call once at startup."""
-    return NexusConfig(_env_file=env_file)
+    env_path = Path(env_file)
+    if not env_path.exists():
+        return NexusConfig(_env_file=None)
+
+    with _temporary_env_overlay(_read_env_file(env_path)):
+        return NexusConfig(_env_file=None)
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip()
+    return values
+
+
+@contextmanager
+def _temporary_env_overlay(values: dict[str, str]) -> None:
+    original: dict[str, str | None] = {}
+    inserted: set[str] = set()
+    try:
+        for key, value in values.items():
+            previous = os.environ.get(key)
+            original[key] = previous
+            if previous is None:
+                os.environ[key] = value
+                inserted.add(key)
+        yield
+    finally:
+        for key, previous in original.items():
+            if key in inserted:
+                os.environ.pop(key, None)
+            elif previous is not None:
+                os.environ[key] = previous

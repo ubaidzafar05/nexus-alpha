@@ -306,7 +306,7 @@ async def fetch_rss_feed(url: str, source_name: str) -> list[RSSArticle]:
             )
         return articles
     except Exception as err:
-        logger.warning("rss_fetch_failed", source=source_name, error=str(err))
+        logger.warning("rss_fetch_failed", source=source_name, error=repr(err))
         return []
 
 

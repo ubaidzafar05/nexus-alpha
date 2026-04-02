@@ -14,32 +14,147 @@ so downstream pipeline (openclaw_pipeline.py) works without changes.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import httpx
 
+from nexus_alpha.data.free_sources import (
+    fetch_all_rss_feeds,
+    get_cryptopanic_news,
+    get_current_fear_greed,
+    get_total_tvl_history,
+)
 from nexus_alpha.intelligence.openclaw_agents import (
     IntelligenceCategory,
     IntelligenceReport,
     Urgency,
 )
-from nexus_alpha.data.free_sources import (
-    fetch_all_rss_feeds,
-    get_cryptopanic_news,
-    get_current_fear_greed,
-    get_defi_yields,
-    get_total_tvl_history,
-)
 from nexus_alpha.logging import get_logger
 
 logger = get_logger(__name__)
 
+DEFAULT_CRAWL_TARGETS = [
+    "https://www.coindesk.com/markets/",
+    "https://decrypt.co/news",
+    "https://cointelegraph.com/latest-cryptocurrency-news",
+]
+
+DEFAULT_CRAWL_PROMPT = (
+    "Extract up to {max_items} freshest crypto market-relevant items from this page. "
+    "Return strict JSON as a list of objects with keys: headline, summary, url, "
+    "affected_symbols, urgency. Use urgency values low, medium, or high. "
+    "Use concise summaries and only include market-relevant content."
+)
+
+_SYMBOL_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "BTC": ("bitcoin", "btc"),
+    "ETH": ("ethereum", "eth"),
+    "SOL": ("solana", "sol"),
+    "BNB": ("binance coin", "bnb"),
+    "ADA": ("cardano", "ada"),
+    "AVAX": ("avalanche", "avax"),
+    "MATIC": ("polygon", "matic", "pol"),
+    "DOT": ("polkadot", "dot"),
+    "LINK": ("chainlink", "link"),
+    "UNI": ("uniswap", "uni"),
+}
+
 
 def _make_report_id(source: str, content: str) -> str:
-    import hashlib
-    return hashlib.sha1(f"{source}:{content}".encode()).hexdigest()[:16]
+    return hashlib.sha256(f"{source}:{content}".encode()).hexdigest()[:16]
+
+
+def _bounded_confidence(value: Any, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, min(parsed, 1.0))
+
+
+def _coerce_urgency(value: Any, default: Urgency) -> Urgency:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in Urgency._value2member_map_:
+            return Urgency(normalized)
+    return default
+
+
+def _infer_symbols(text: str) -> list[str]:
+    haystack = text.lower()
+    hits = [
+        symbol
+        for symbol, keywords in _SYMBOL_KEYWORDS.items()
+        if any(keyword in haystack for keyword in keywords)
+    ]
+    return sorted(set(hits))
+
+
+def _coerce_symbols(value: Any, fallback_text: str) -> list[str]:
+    if isinstance(value, list):
+        return sorted({str(item).strip().upper() for item in value if str(item).strip()})
+    if isinstance(value, str) and value.strip():
+        return sorted({item.strip().upper() for item in value.split(",") if item.strip()})
+    return _infer_symbols(fallback_text)
+
+
+@dataclass(frozen=True)
+class CrawlTarget:
+    url: str
+    category: IntelligenceCategory = IntelligenceCategory.BREAKING_NEWS
+    urgency: Urgency = Urgency.MEDIUM
+    confidence: float = 0.6
+    max_items: int = 5
+
+
+def intelligence_report_payload(report: IntelligenceReport) -> dict[str, Any]:
+    return {
+        "report_id": report.report_id,
+        "category": report.category.value,
+        "urgency": report.urgency.value,
+        "headline": report.headline,
+        "summary": report.summary,
+        "sentiment_score": report.sentiment_score,
+        "confidence": report.confidence,
+        "affected_symbols": report.affected_symbols,
+        "source_urls": report.source_urls,
+        "raw_data": report.raw_data,
+        "timestamp": report.timestamp.isoformat(),
+        "ttl_seconds": report.ttl_seconds,
+    }
+
+
+def publish_reports_to_kafka(
+    reports: list[IntelligenceReport],
+    bootstrap_servers: str,
+    topic: str = "nexus.intelligence",
+) -> int:
+    if not reports:
+        return 0
+
+    import json
+
+    from confluent_kafka import Producer  # type: ignore[import]
+
+    from nexus_alpha.data.kafka_admin import ensure_topics_exist
+
+    ensure_topics_exist(bootstrap_servers, [topic])
+    producer = Producer({"bootstrap.servers": bootstrap_servers})
+    produced = 0
+    for report in reports:
+        producer.produce(
+            topic,
+            key=report.report_id,
+            value=json.dumps(intelligence_report_payload(report)).encode(),
+        )
+        producer.poll(0)
+        produced += 1
+    producer.flush(timeout=5.0)
+    logger.info("intelligence_reports_published", topic=topic, count=produced)
+    return produced
 
 
 # ── Crawl4AI-powered scraper ──────────────────────────────────────────────────
@@ -56,11 +171,11 @@ async def _crawl_url_with_ollama(
     """
     try:
         from crawl4ai import AsyncWebCrawler  # type: ignore[import]
+        from crawl4ai.async_configs import LLMConfig  # type: ignore[import]
         from crawl4ai.extraction_strategy import LLMExtractionStrategy  # type: ignore[import]
 
         strategy = LLMExtractionStrategy(
-            provider=f"ollama/{model}",
-            api_base=ollama_base_url,
+            llm_config=LLMConfig(provider=f"ollama/{model}", base_url=ollama_base_url),
             instruction=extraction_prompt,
         )
         async with AsyncWebCrawler(verbose=False) as crawler:
@@ -74,14 +189,28 @@ async def _crawl_url_with_ollama(
             try:
                 data = json.loads(result.extracted_content)
                 return data if isinstance(data, list) else [data]
-            except Exception:
-                return []
-        return []
+            except Exception as err:
+                logger.debug("crawl4ai_json_parse_failed", error=repr(err))
+
+        fallback_text = (
+            getattr(result, "markdown", None)
+            or getattr(result, "cleaned_html", None)
+            or getattr(result, "html", None)
+            or ""
+        )
+        return [
+            {
+                "url": url,
+                "success": bool(getattr(result, "success", False)),
+                "content": str(fallback_text)[:4000],
+                "prompt": extraction_prompt,
+            }
+        ]
     except ImportError:
         logger.debug("crawl4ai_not_installed_using_httpx_fallback")
         return await _httpx_fallback(url)
     except Exception as err:
-        logger.warning("crawl4ai_failed", url=url, error=str(err))
+        logger.warning("crawl4ai_failed", url=url, error=repr(err))
         return []
 
 
@@ -93,6 +222,106 @@ async def _httpx_fallback(url: str) -> list[dict[str, Any]]:
             return [{"raw_html": resp.text[:2000], "url": url}]
     except Exception:
         return []
+
+
+class Crawl4AINewsAgent:
+    """Manual/periodic crawl agent for curated news targets."""
+
+    def __init__(
+        self,
+        target_urls: list[str] | None = None,
+        ollama_base_url: str = "http://localhost:11434",
+        model: str = "qwen3:8b",
+        max_items_per_target: int = 5,
+    ) -> None:
+        urls = target_urls or DEFAULT_CRAWL_TARGETS
+        seen: set[str] = set()
+        self._targets = []
+        for url in urls:
+            normalized = url.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            self._targets.append(CrawlTarget(url=normalized, max_items=max_items_per_target))
+        self._ollama_base_url = ollama_base_url
+        self._model = model
+
+    async def fetch(self) -> list[IntelligenceReport]:
+        if not self._targets:
+            return []
+
+        results = await asyncio.gather(
+            *(self._fetch_target(target) for target in self._targets),
+            return_exceptions=True,
+        )
+        reports: list[IntelligenceReport] = []
+        seen_keys: set[str] = set()
+        for batch in results:
+            if isinstance(batch, Exception):
+                logger.warning("crawl_target_batch_failed", error=repr(batch))
+                continue
+            for report in batch:
+                dedupe_key = (report.source_urls[0] if report.source_urls else report.headline).strip().lower()
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+                reports.append(report)
+        logger.info("crawl4ai_agent_fetched", targets=len(self._targets), count=len(reports))
+        return reports
+
+    async def _fetch_target(self, target: CrawlTarget) -> list[IntelligenceReport]:
+        prompt = DEFAULT_CRAWL_PROMPT.format(max_items=target.max_items)
+        items = await _crawl_url_with_ollama(
+            target.url,
+            extraction_prompt=prompt,
+            ollama_base_url=self._ollama_base_url,
+            model=self._model,
+        )
+        reports = []
+        for item in items[:target.max_items]:
+            report = self._item_to_report(item, target)
+            if report is not None:
+                reports.append(report)
+        logger.info("crawl_target_fetched", url=target.url, count=len(reports))
+        return reports
+
+    def _item_to_report(self, item: dict[str, Any], target: CrawlTarget) -> IntelligenceReport | None:
+        summary = str(
+            item.get("summary")
+            or item.get("content")
+            or item.get("text")
+            or item.get("raw_html")
+            or ""
+        ).strip()
+        headline = str(item.get("headline") or item.get("title") or "").strip()
+        if not headline and summary:
+            headline = summary[:160]
+        if not headline:
+            return None
+
+        source_url = str(item.get("url") or item.get("link") or target.url).strip() or target.url
+        sentiment = 0.0
+        if "bullish" in summary.lower() or "surge" in headline.lower():
+            sentiment = 0.25
+        elif "bearish" in summary.lower() or "drop" in headline.lower():
+            sentiment = -0.25
+
+        fallback_text = f"{headline}\n{summary}\n{source_url}"
+        affected_symbols = _coerce_symbols(item.get("affected_symbols"), fallback_text)
+
+        return IntelligenceReport(
+            report_id=_make_report_id("crawl4ai", source_url or headline),
+            category=target.category,
+            urgency=_coerce_urgency(item.get("urgency"), target.urgency),
+            headline=headline[:200],
+            summary=(summary or headline)[:500],
+            sentiment_score=sentiment,
+            confidence=_bounded_confidence(item.get("confidence"), target.confidence),
+            affected_symbols=affected_symbols,
+            source_urls=[source_url],
+            raw_data={"source": "crawl4ai", "target_url": target.url, "extracted": item},
+            ttl_seconds=1800,
+        )
 
 
 # ── Individual intelligence agents ───────────────────────────────────────────
@@ -169,7 +398,7 @@ class CryptoPanicAgent:
                         )
                     )
             except Exception as err:
-                logger.warning("cryptopanic_fetch_failed", filter=filter_type, error=str(err))
+                logger.warning("cryptopanic_fetch_failed", filter=filter_type, error=repr(err))
         logger.info("cryptopanic_agent_fetched", count=len(reports))
         return reports
 
@@ -195,8 +424,8 @@ class FearGreedAgent:
                     urgency=urgency,
                     headline=f"Fear & Greed Index: {value} — {classification}",
                     summary=(
-                        f"Market sentiment is {classification.lower()} (score: {value}/100). "
-                        f"{'Extreme fear may signal buying opportunity.' if value <= 25 else 'Extreme greed may signal correction risk.' if value >= 75 else ''}"
+                        f"Market sentiment is {classification.lower()} "
+                        f"(score: {value}/100). "
                     ),
                     sentiment_score=round(sentiment, 3),
                     confidence=0.85,
@@ -206,7 +435,7 @@ class FearGreedAgent:
                 )
             ]
         except Exception as err:
-            logger.warning("fear_greed_fetch_failed", error=str(err))
+            logger.warning("fear_greed_fetch_failed", error=repr(err))
             return []
 
 
@@ -229,6 +458,12 @@ class DeFiTVLAgent:
             pct_change = (current_tvl - prev_tvl) / max(prev_tvl, 1) * 100
 
             sentiment = min(max(pct_change / 10, -1.0), 1.0)  # ±10% TVL change → ±1.0
+            direction = "up" if pct_change > 0 else "down"
+            risk_text = (
+                "Increasing TVL indicates risk appetite and capital inflows."
+                if pct_change > 0
+                else "Decreasing TVL indicates capital outflows and risk-off sentiment."
+            )
 
             return [
                 IntelligenceReport(
@@ -238,8 +473,8 @@ class DeFiTVLAgent:
                     headline=f"DeFi Total TVL: ${current_tvl/1e9:.1f}B ({pct_change:+.1f}% daily)",
                     summary=(
                         f"Total DeFi TVL is ${current_tvl/1e9:.1f}B, "
-                        f"{'up' if pct_change > 0 else 'down'} {abs(pct_change):.1f}% from previous period. "
-                        f"{'Increasing TVL indicates risk appetite and capital inflows.' if pct_change > 0 else 'Decreasing TVL indicates capital outflows and risk-off sentiment.'}"
+                        f"{direction} {abs(pct_change):.1f}% from previous period. "
+                        f"{risk_text}"
                     ),
                     sentiment_score=round(sentiment, 3),
                     confidence=0.75,
@@ -250,7 +485,7 @@ class DeFiTVLAgent:
                 )
             ]
         except Exception as err:
-            logger.warning("defillama_tvl_fetch_failed", error=str(err))
+            logger.warning("defillama_tvl_fetch_failed", error=repr(err))
             return []
 
 
@@ -268,9 +503,8 @@ class SECFilingAgent:
     )
 
     async def fetch(self) -> list[IntelligenceReport]:
-        from datetime import date, timedelta as td
         today = date.today().isoformat()
-        week_ago = (date.today() - td(days=7)).isoformat()
+        week_ago = (date.today() - timedelta(days=7)).isoformat()
         url = self.EDGAR_SEARCH.format(start=week_ago, end=today)
 
         try:
@@ -309,7 +543,7 @@ class SECFilingAgent:
             logger.info("sec_agent_fetched", count=len(reports))
             return reports
         except Exception as err:
-            logger.warning("sec_edgar_fetch_failed", error=str(err))
+            logger.warning("sec_edgar_fetch_failed", error=repr(err))
             return []
 
 
@@ -326,8 +560,11 @@ class FreeIntelligenceOrchestrator:
 
     cryptopanic_token: str = ""
     ollama_base_url: str = "http://localhost:11434"
+    crawl_targets: list[str] | None = None
+    intelligence_topic: str = "nexus.intelligence"
     _report_buffer: list[IntelligenceReport] = field(default_factory=list)
     _scheduler: Any | None = field(default=None, init=False, repr=False)
+    _kafka_producer: Any | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._rss = RSSNewsAgent()
@@ -335,6 +572,10 @@ class FreeIntelligenceOrchestrator:
         self._fear_greed = FearGreedAgent()
         self._tvl = DeFiTVLAgent()
         self._sec = SECFilingAgent()
+        self._crawl = Crawl4AINewsAgent(
+            target_urls=self.crawl_targets,
+            ollama_base_url=self.ollama_base_url,
+        )
 
     async def run_all(self) -> list[IntelligenceReport]:
         """Fetch from all agents concurrently. Safe to call every 15 minutes."""
@@ -344,6 +585,7 @@ class FreeIntelligenceOrchestrator:
             self._fear_greed.fetch(),
             self._tvl.fetch(),
             self._sec.fetch(),
+            self._crawl.fetch(),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         reports: list[IntelligenceReport] = []
@@ -353,7 +595,32 @@ class FreeIntelligenceOrchestrator:
         logger.info("orchestrator_run_complete", total_reports=len(reports))
         return reports
 
-    def start_scheduler(self, kafka_producer: Any | None = None) -> None:
+    def publish_reports(self, reports: list[IntelligenceReport], bootstrap_servers: str | None = None) -> int:
+        if not reports:
+            return 0
+        if self._kafka_producer is not None:
+            import json
+
+            published = 0
+            for report in reports:
+                self._kafka_producer.produce(
+                    self.intelligence_topic,
+                    key=report.report_id,
+                    value=json.dumps(intelligence_report_payload(report)).encode(),
+                )
+                self._kafka_producer.poll(0)
+                published += 1
+            self._kafka_producer.flush(timeout=5.0)
+            return published
+        if bootstrap_servers:
+            return publish_reports_to_kafka(reports, bootstrap_servers, topic=self.intelligence_topic)
+        return 0
+
+    def start_scheduler(
+        self,
+        kafka_producer: Any | None = None,
+        bootstrap_servers: str | None = None,
+    ) -> None:
         """Start APScheduler background jobs. Call once at startup."""
         if self._scheduler is not None:
             logger.info("free_intelligence_scheduler_already_started")
@@ -365,33 +632,15 @@ class FreeIntelligenceOrchestrator:
             return
 
         scheduler = AsyncIOScheduler()
+        self._kafka_producer = kafka_producer
 
         async def _publish_all() -> None:
             reports = await self.run_all()
             self._report_buffer.extend(reports)
-            if kafka_producer:
-                for report in reports:
-                    try:
-                        import json
-                        from dataclasses import asdict
-                        payload = {
-                            "report_id": report.report_id,
-                            "category": report.category.value,
-                            "urgency": report.urgency.value,
-                            "headline": report.headline,
-                            "summary": report.summary,
-                            "sentiment_score": report.sentiment_score,
-                            "confidence": report.confidence,
-                            "affected_symbols": report.affected_symbols,
-                            "timestamp": report.timestamp.isoformat(),
-                        }
-                        kafka_producer.produce(
-                            "nexus.intelligence",
-                            key=report.report_id,
-                            value=json.dumps(payload).encode(),
-                        )
-                    except Exception as err:
-                        logger.warning("kafka_publish_failed", error=str(err))
+            try:
+                self.publish_reports(reports, bootstrap_servers=bootstrap_servers)
+            except Exception as err:
+                logger.warning("kafka_publish_failed", error=repr(err))
 
         scheduler.add_job(_publish_all, "interval", minutes=15, id="intelligence_agents")
         scheduler.start()
@@ -403,6 +652,9 @@ class FreeIntelligenceOrchestrator:
             return
         self._scheduler.shutdown(wait=False)
         self._scheduler = None
+        if self._kafka_producer is not None:
+            self._kafka_producer.flush(timeout=5.0)
+            self._kafka_producer = None
         logger.info("free_intelligence_scheduler_stopped")
 
     def get_buffered_reports(self, clear: bool = True) -> list[IntelligenceReport]:

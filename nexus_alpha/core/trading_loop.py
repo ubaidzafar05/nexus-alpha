@@ -17,6 +17,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import json as _json
@@ -54,8 +55,12 @@ from nexus_alpha.types import (
 logger = get_logger(__name__)
 
 DEBATE_NAV_THRESHOLD = 0.05  # 5% of NAV triggers debate
-MIN_SIGNAL_CONFIDENCE = 0.15
+MIN_SIGNAL_CONFIDENCE = 0.35  # Minimum confidence to even consider trading
 MIN_POSITION_USD = 10.0
+MAX_OPEN_POSITIONS = 3         # Max simultaneous positions
+MAX_TOTAL_EXPOSURE_PCT = 0.50  # Max 50% of NAV in open positions
+COOLDOWN_SECONDS = 300         # 5 min between trades on same symbol
+DATA_MAX_AGE_SECONDS = 300     # Skip symbol if price older than 5 min
 
 
 @dataclass
@@ -101,11 +106,14 @@ class TradingLoopOrchestrator:
         alerts: TelegramAlerts,
         portfolio: Portfolio | None = None,
         cycle_interval_s: float = 60.0,
+        persist_portfolio: bool = True,
     ) -> None:
         self._config = config
         self._signal_engine = signal_engine
         self._circuit_breaker = circuit_breaker
         self._alerts = alerts
+        self._explicit_portfolio = portfolio is not None
+        self._persist_portfolio = persist_portfolio
         self._portfolio = portfolio or Portfolio(
             nav=100_000.0,
             cash=100_000.0,
@@ -132,6 +140,12 @@ class TradingLoopOrchestrator:
         self._running = False
         self._metrics = LoopMetrics()
         self._redis: Any = None
+        self._last_trade_time: dict[str, float] = {}  # symbol → monotonic timestamp
+        self._portfolio_file = Path("data/trade_logs/portfolio_state.json")
+
+        # Restore portfolio from disk only if persistence enabled and no explicit portfolio
+        if self._persist_portfolio and not self._explicit_portfolio:
+            self._load_portfolio()
 
     @property
     def metrics(self) -> LoopMetrics:
@@ -181,6 +195,153 @@ class TradingLoopOrchestrator:
             if len(features) == 0:
                 return None
             return features[feature_cols].iloc[-1].tolist()
+        except Exception:
+            return None
+
+    # ── Portfolio persistence ─────────────────────────────────────────────
+
+    def _save_portfolio(self) -> None:
+        """Save portfolio state to disk so it survives restarts."""
+        if not self._persist_portfolio:
+            return
+        try:
+            self._portfolio_file.parent.mkdir(parents=True, exist_ok=True)
+            state = {
+                "nav": self._portfolio.nav,
+                "cash": self._portfolio.cash,
+                "total_realized_pnl": self._portfolio.total_realized_pnl,
+                "positions": [
+                    {
+                        "symbol": p.symbol,
+                        "side": p.side.value,
+                        "quantity": p.quantity,
+                        "entry_price": p.entry_price,
+                        "current_price": p.current_price,
+                        "unrealized_pnl": p.unrealized_pnl,
+                        "realized_pnl": p.realized_pnl,
+                        "opened_at": p.opened_at.isoformat(),
+                        "stop_loss": p.stop_loss,
+                        "take_profit": p.take_profit,
+                    }
+                    for p in self._portfolio.positions
+                ],
+                "saved_at": datetime.utcnow().isoformat(),
+            }
+            self._portfolio_file.write_text(_json.dumps(state, indent=2))
+        except Exception as err:
+            logger.warning("portfolio_save_failed", error=repr(err))
+
+    def _load_portfolio(self) -> None:
+        """Load portfolio state from disk on startup."""
+        if not self._portfolio_file.exists():
+            logger.info("no_saved_portfolio", msg="Starting with fresh portfolio")
+            return
+        try:
+            state = _json.loads(self._portfolio_file.read_text())
+            positions = []
+            for p in state.get("positions", []):
+                positions.append(Position(
+                    symbol=p["symbol"],
+                    exchange=ExchangeName.BINANCE,
+                    side=OrderSide(p["side"]),
+                    quantity=p["quantity"],
+                    entry_price=p["entry_price"],
+                    current_price=p["current_price"],
+                    unrealized_pnl=p.get("unrealized_pnl", 0.0),
+                    realized_pnl=p.get("realized_pnl", 0.0),
+                    stop_loss=p.get("stop_loss"),
+                    take_profit=p.get("take_profit"),
+                ))
+            self._portfolio.cash = state["cash"]
+            self._portfolio.nav = state["nav"]
+            self._portfolio.total_realized_pnl = state.get("total_realized_pnl", 0.0)
+            self._portfolio.positions = positions
+            logger.info(
+                "portfolio_restored",
+                nav=f"{self._portfolio.nav:.2f}",
+                cash=f"{self._portfolio.cash:.2f}",
+                positions=len(positions),
+            )
+        except Exception as err:
+            logger.warning("portfolio_load_failed", error=repr(err))
+
+    # ── NAV recalculation ─────────────────────────────────────────────────
+
+    def _recalculate_nav(self) -> None:
+        """Recalculate NAV from current prices every cycle."""
+        total_unrealized = 0.0
+        for pos in self._portfolio.positions:
+            current_price = self._get_latest_price(pos.symbol) or pos.current_price
+            pos.current_price = current_price
+            if pos.side == OrderSide.BUY:
+                pos.unrealized_pnl = (current_price - pos.entry_price) * pos.quantity
+            else:
+                pos.unrealized_pnl = (pos.entry_price - current_price) * pos.quantity
+            total_unrealized += pos.unrealized_pnl
+
+        self._portfolio.total_unrealized_pnl = total_unrealized
+        self._portfolio.nav = self._portfolio.cash + sum(
+            p.quantity * p.current_price for p in self._portfolio.positions
+        )
+
+    # ── Position guards ───────────────────────────────────────────────────
+
+    def _has_open_position(self, symbol: str) -> bool:
+        """Check if we already have an open position for this symbol."""
+        return any(p.symbol == symbol for p in self._portfolio.positions)
+
+    def _is_on_cooldown(self, symbol: str) -> bool:
+        """Check if we recently traded this symbol."""
+        last = self._last_trade_time.get(symbol, 0.0)
+        return (time.monotonic() - last) < COOLDOWN_SECONDS
+
+    def _total_exposure_pct(self) -> float:
+        """Current total exposure as percentage of NAV."""
+        if self._portfolio.nav <= 0:
+            return 1.0
+        return self._portfolio.gross_exposure / self._portfolio.nav
+
+    def _is_data_fresh(self, symbol: str) -> bool:
+        """Check if price data for this symbol is recent enough to trade on."""
+        if not self._redis:
+            return False
+        try:
+            # Check if the price key has a TTL or was recently updated
+            raw_ohlcv = self._redis.get(f"ohlcv:{symbol}")
+            if not raw_ohlcv:
+                return False
+            data = _json.loads(raw_ohlcv)
+            if not data:
+                return False
+            # Check last candle timestamp if available
+            last_candle = data[-1]
+            if "timestamp" in last_candle:
+                ts = last_candle["timestamp"]
+                if isinstance(ts, (int, float)):
+                    age = time.time() - ts / 1000
+                    return age < DATA_MAX_AGE_SECONDS
+            # If no timestamp, just check data exists (fallback)
+            return len(data) > 20
+        except Exception:
+            return True  # Don't block on check failures
+
+    # ── ATR-based dynamic stops ───────────────────────────────────────────
+
+    def _compute_atr(self, symbol: str, period: int = 14) -> float | None:
+        """Compute ATR from Redis OHLCV data for dynamic TP/SL."""
+        df = self._build_feature_dataframe(symbol)
+        if df is None or len(df) < period + 1:
+            return None
+        try:
+            high = pd.to_numeric(df["high"], errors="coerce")
+            low = pd.to_numeric(df["low"], errors="coerce")
+            close = pd.to_numeric(df["close"], errors="coerce")
+            tr = pd.concat([
+                high - low,
+                (high - close.shift(1)).abs(),
+                (low - close.shift(1)).abs(),
+            ], axis=1).max(axis=1)
+            return float(tr.rolling(period).mean().iloc[-1])
         except Exception:
             return None
 
@@ -654,8 +815,11 @@ class TradingLoopOrchestrator:
 
     async def _check_position_exits(self) -> None:
         """
-        Check open positions for exit conditions (take-profit / stop-loss).
-        When a position exits, log the outcome for learning.
+        Check open positions for exit conditions:
+        - ATR-based dynamic stop loss
+        - ATR-based take profit
+        - Trailing stop (ratchets up as price moves in our favor)
+        - Time-based exit (close stale positions after 48h)
         """
         positions_to_close: list[tuple[Position, float, str]] = []
 
@@ -663,21 +827,68 @@ class TradingLoopOrchestrator:
             current_price = self._get_latest_price(pos.symbol) or pos.current_price
             pos.current_price = current_price
 
-            pnl_pct = (current_price - pos.entry_price) / pos.entry_price if pos.entry_price > 0 else 0.0
-            if pos.side == OrderSide.SELL:
-                pnl_pct = -pnl_pct
+            pnl_pct = pos.return_pct
 
-            # Take profit at 3%, stop loss at -2%
-            if pnl_pct >= 0.03:
-                positions_to_close.append((pos, current_price, "take_profit"))
-            elif pnl_pct <= -0.02:
-                positions_to_close.append((pos, current_price, "stop_loss"))
+            # Compute ATR-based stops if not already set on this position
+            if pos.stop_loss is None or pos.take_profit is None:
+                atr = self._compute_atr(pos.symbol)
+                if atr and pos.entry_price > 0:
+                    atr_pct = atr / pos.entry_price
+                    # SL = 2 × ATR below entry, TP = 3 × ATR above entry
+                    if pos.side == OrderSide.BUY:
+                        pos.stop_loss = pos.entry_price * (1 - 2.0 * atr_pct)
+                        pos.take_profit = pos.entry_price * (1 + 3.0 * atr_pct)
+                    else:
+                        pos.stop_loss = pos.entry_price * (1 + 2.0 * atr_pct)
+                        pos.take_profit = pos.entry_price * (1 - 3.0 * atr_pct)
+                else:
+                    # Fallback: 2% SL, 3% TP
+                    if pos.side == OrderSide.BUY:
+                        pos.stop_loss = pos.entry_price * 0.98
+                        pos.take_profit = pos.entry_price * 1.03
+                    else:
+                        pos.stop_loss = pos.entry_price * 1.02
+                        pos.take_profit = pos.entry_price * 0.97
+
+            # Trailing stop: move SL up if price moved significantly in our favor
+            if pos.side == OrderSide.BUY and pnl_pct > 0.015:
+                # Trail SL to lock in at least 40% of current profit
+                trail_sl = pos.entry_price * (1 + pnl_pct * 0.4)
+                if pos.stop_loss and trail_sl > pos.stop_loss:
+                    pos.stop_loss = trail_sl
+            elif pos.side == OrderSide.SELL and pnl_pct > 0.015:
+                trail_sl = pos.entry_price * (1 - pnl_pct * 0.4)
+                if pos.stop_loss and trail_sl < pos.stop_loss:
+                    pos.stop_loss = trail_sl
+
+            # Check exit conditions
+            if pos.side == OrderSide.BUY:
+                if pos.stop_loss and current_price <= pos.stop_loss:
+                    positions_to_close.append((pos, current_price, "stop_loss"))
+                elif pos.take_profit and current_price >= pos.take_profit:
+                    positions_to_close.append((pos, current_price, "take_profit"))
+            else:
+                if pos.stop_loss and current_price >= pos.stop_loss:
+                    positions_to_close.append((pos, current_price, "stop_loss"))
+                elif pos.take_profit and current_price <= pos.take_profit:
+                    positions_to_close.append((pos, current_price, "take_profit"))
+
+            # Time-based exit: close stale positions after 48 hours
+            age_hours = (datetime.utcnow() - pos.opened_at).total_seconds() / 3600
+            if age_hours > 48 and pos not in [p for p, _, _ in positions_to_close]:
+                positions_to_close.append((pos, current_price, "time_exit_48h"))
 
         for pos, exit_price, reason in positions_to_close:
             notional = pos.quantity * exit_price
             pnl = (exit_price - pos.entry_price) * pos.quantity
             if pos.side == OrderSide.SELL:
                 pnl = -pnl
+
+            # Update portfolio
+            self._portfolio.cash += notional
+            self._portfolio.total_realized_pnl += pnl
+            if pos in self._portfolio.positions:
+                self._portfolio.positions.remove(pos)
 
             # Log the closed trade for learning
             open_trades = self._trade_logger.get_open_trades()
@@ -690,23 +901,21 @@ class TradingLoopOrchestrator:
                     )
                     break
 
-            # Update portfolio
-            self._portfolio.cash += notional
-            if pos in self._portfolio.positions:
-                self._portfolio.positions.remove(pos)
+            pnl_pct = pnl / (pos.entry_price * pos.quantity) * 100 if pos.entry_price * pos.quantity > 0 else 0
 
             logger.info(
                 "position_closed",
                 symbol=pos.symbol,
                 reason=reason,
-                pnl=f"{pnl:.2f}",
+                pnl=f"${pnl:.2f}",
+                pnl_pct=f"{pnl_pct:.2f}%",
                 exit_price=f"{exit_price:.2f}",
             )
 
             await self._alerts.risk_alert(f"position_closed_{reason}", {
                 "symbol": pos.symbol,
-                "pnl": round(pnl, 2),
-                "pnl_pct": round(pnl / (pos.entry_price * pos.quantity) * 100, 2),
+                "pnl": f"${pnl:.2f}",
+                "pnl_pct": f"{pnl_pct:.2f}%",
                 "reason": reason,
             })
 
@@ -715,7 +924,10 @@ class TradingLoopOrchestrator:
     async def _run_cycle(self) -> None:
         symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT"]
 
-        # 1. Update circuit breaker
+        # 0. Recalculate NAV from live prices FIRST
+        self._recalculate_nav()
+
+        # 1. Update circuit breaker with REAL values
         from nexus_alpha.risk.circuit_breaker import RiskSnapshot
 
         risk_snap = RiskSnapshot(
@@ -737,16 +949,68 @@ class TradingLoopOrchestrator:
             )
             return
 
-        # 2. Generate signals
+        # 2. Check exits BEFORE generating new signals
+        await self._check_position_exits()
+
+        # 3. Check if we can even take new positions
+        if self._portfolio.position_count >= MAX_OPEN_POSITIONS:
+            logger.debug(
+                "max_positions_reached",
+                current=self._portfolio.position_count,
+                max=MAX_OPEN_POSITIONS,
+            )
+            self._save_portfolio()
+            return
+
+        if self._total_exposure_pct() >= MAX_TOTAL_EXPOSURE_PCT:
+            logger.debug(
+                "max_exposure_reached",
+                exposure=f"{self._total_exposure_pct():.1%}",
+                max=f"{MAX_TOTAL_EXPOSURE_PCT:.0%}",
+            )
+            self._save_portfolio()
+            return
+
+        # 4. Generate signals
         signals = self._generate_signals(symbols)
         if not signals:
+            self._save_portfolio()
             return
 
         self._metrics.last_signal_at = time.monotonic()
 
-        # 3. Process each signal through debate → sizing → risk → execution
+        # 5. Process signals with ALL guards
         for fused in signals:
-            current_price = self._get_latest_price(fused.symbol) or 1.0
+            # Guard: duplicate position check
+            if self._has_open_position(fused.symbol):
+                self._metrics.orders_rejected += 1
+                logger.debug("skip_duplicate_position", symbol=fused.symbol)
+                continue
+
+            # Guard: cooldown check
+            if self._is_on_cooldown(fused.symbol):
+                self._metrics.orders_rejected += 1
+                logger.debug("skip_cooldown", symbol=fused.symbol)
+                continue
+
+            # Guard: data freshness
+            if not self._is_data_fresh(fused.symbol):
+                self._metrics.orders_rejected += 1
+                logger.warning("skip_stale_data", symbol=fused.symbol)
+                continue
+
+            # Guard: max positions re-check (could have filled during this loop)
+            if self._portfolio.position_count >= MAX_OPEN_POSITIONS:
+                break
+
+            # Guard: exposure limit re-check
+            if self._total_exposure_pct() >= MAX_TOTAL_EXPOSURE_PCT:
+                break
+
+            current_price = self._get_latest_price(fused.symbol) or 0.0
+            if current_price <= 0:
+                continue
+
             sentiment = self._get_sentiment(fused.symbol.replace("USDT", ""))
 
             # Blend sentiment into signal confidence
@@ -768,14 +1032,18 @@ class TradingLoopOrchestrator:
             # Debate gate (only for large trades)
             verdict = await self._debate_gate(fused, raw_size_usd)
 
-            # Position sizing
+            # Position sizing — cap to remaining available exposure
             position_size = self._compute_position_size(fused, verdict, current_price)
+            remaining_budget = (MAX_TOTAL_EXPOSURE_PCT - self._total_exposure_pct()) * self._portfolio.nav
+            position_size = min(position_size, max(0.0, remaining_budget))
 
             approved = position_size >= MIN_POSITION_USD
             rejection_reason = ""
             if verdict and verdict.synthesis_recommendation == "reject":
                 approved = False
                 rejection_reason = f"debate_rejected: {verdict.reasoning}"
+            if not approved and not rejection_reason:
+                rejection_reason = f"position_size_too_small: ${position_size:.2f}"
 
             decision = TradingDecision(
                 signal=fused,
@@ -788,19 +1056,20 @@ class TradingLoopOrchestrator:
 
             if decision.approved:
                 await self._execute_decision(decision)
+                self._last_trade_time[fused.symbol] = time.monotonic()
             else:
                 self._metrics.orders_rejected += 1
                 if rejection_reason:
                     logger.info("trade_rejected", symbol=fused.symbol, reason=rejection_reason)
 
-        # ── Check for position exits and log outcomes ──
-        await self._check_position_exits()
-
-        # ── Periodic online learning ──
+        # 6. Periodic online learning
         if self._online_learner.should_retrain():
             stats = self._online_learner.retrain_from_journal(self._trade_logger)
             if stats:
                 await self._alerts.risk_alert("model_retrained", stats)
+
+        # 7. Save portfolio state every cycle
+        self._save_portfolio()
 
     # ── Main loop ─────────────────────────────────────────────────────────
 
@@ -833,4 +1102,5 @@ class TradingLoopOrchestrator:
 
     def stop(self) -> None:
         self._running = False
+        self._save_portfolio()
         logger.info("trading_loop_stopping", metrics=self._metrics.__dict__)

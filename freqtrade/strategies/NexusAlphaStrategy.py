@@ -78,6 +78,22 @@ class NexusAlphaStrategy(IStrategy):
     _REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     _sentiment_cache: dict[str, float] = {}
 
+    @staticmethod
+    def _env_flag(name: str, default: bool = True) -> bool:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        return value.strip().lower() not in {"0", "false", "no", "off", ""}
+
+    def _trend_entries_enabled(self) -> bool:
+        return self._env_flag("NEXUS_ENABLE_TREND", True)
+
+    def _mean_reversion_entries_enabled(self) -> bool:
+        return self._env_flag("NEXUS_ENABLE_MEAN_REVERSION", True)
+
+    def _regime_filter_enabled(self) -> bool:
+        return self._env_flag("NEXUS_ENABLE_REGIME_FILTER", True)
+
     def _get_sentiment(self, base_asset: str) -> float:
         """Pull pre-computed sentiment from Redis (set by HybridSentimentPipeline)."""
         try:
@@ -142,7 +158,7 @@ class NexusAlphaStrategy(IStrategy):
         # Volatility
         dataframe["atr"] = ta.ATR(dataframe, timeperiod=14)
         dataframe["atr_pct"] = dataframe["atr"] / dataframe["close"]
-        bb = ta.BBANDS(dataframe, timeperiod=20, nbdevup=2, nbdevdn=2)
+        bb = ta.BBANDS(dataframe, timeperiod=20, nbdevup=2.0, nbdevdn=2.0)
         dataframe["bb_upper"] = bb["upperband"]
         dataframe["bb_lower"] = bb["lowerband"]
         dataframe["bb_mid"] = bb["middleband"]
@@ -187,8 +203,12 @@ class NexusAlphaStrategy(IStrategy):
     # ── Entry signal ──────────────────────────────────────────────────────────
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+        all_rows = pd.Series(True, index=dataframe.index, dtype=bool)
+        trend_regime_ok = (dataframe["regime"] == "trending") if self._regime_filter_enabled() else all_rows
+        mean_rev_regime_ok = (dataframe["regime"] == "mean_reverting") if self._regime_filter_enabled() else all_rows
+
         trend_long = (
-            (dataframe["regime"] == "trending")
+            trend_regime_ok
             & (dataframe["ema_fast"] > dataframe["ema_slow"])
             & (dataframe["ema_fast"].shift(1) <= dataframe["ema_slow"].shift(1))
             & (dataframe["adx"] > 25)
@@ -197,11 +217,16 @@ class NexusAlphaStrategy(IStrategy):
         )
 
         mean_rev_long = (
-            (dataframe["regime"] == "mean_reverting")
+            mean_rev_regime_ok
             & (dataframe["bb_pct"] < 0.1)
             & (dataframe["rsi"] < self.rsi_oversold.value)
             & (dataframe["macdhist"] > dataframe["macdhist"].shift(1))
         )
+
+        if not self._trend_entries_enabled():
+            trend_long = pd.Series(False, index=dataframe.index, dtype=bool)
+        if not self._mean_reversion_entries_enabled():
+            mean_rev_long = pd.Series(False, index=dataframe.index, dtype=bool)
 
         sentiment_ok = dataframe["sentiment"] > -self.sentiment_threshold.value
         ob_ok = dataframe["ob_imbalance"] > -0.3

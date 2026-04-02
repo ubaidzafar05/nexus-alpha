@@ -85,6 +85,7 @@ class FeatureStreamingLoop:
                     "ask_size": 9.0 + i,
                 }
             )
+        self._pipeline.flush()
 
     def run_cycle(self, max_messages: int = 200) -> FeatureWorkerStats:
         return self._worker.run_once(max_messages=max_messages)
@@ -109,6 +110,9 @@ class FeatureStreamingLoop:
             "slo": self._pipeline.slo_report(),
             "feature_store": self._feature_store.metrics(),
         }
+
+    def close(self) -> None:
+        self._worker.close()
 
     def recent_events(self, limit: int = 100) -> list[IngestionEvent]:
         publisher = self._pipeline.publisher

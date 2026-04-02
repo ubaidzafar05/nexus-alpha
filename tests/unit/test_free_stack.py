@@ -15,6 +15,7 @@ import sys
 import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pandas as pd
 import pytest
 from click.testing import CliRunner
@@ -39,12 +40,12 @@ class TestFreeLLMClient:
         assert "qwen3" in cfg.model_name
 
     @pytest.mark.asyncio
-    async def test_complete_falls_back_to_groq_when_ollama_unavailable(self):
+    async def test_complete_falls_back_to_groq_when_enabled(self):
         """When Ollama returns a connection error, Groq fallback is invoked."""
         from nexus_alpha.config import LLMConfig
         from nexus_alpha.intelligence.free_llm import FreeLLMClient
 
-        cfg = LLMConfig(groq_api_key="test-key")  # type: ignore[call-arg]
+        cfg = LLMConfig(use_groq_fallback=True, groq_api_key="test-key")  # type: ignore[call-arg]
         client = FreeLLMClient.from_config(cfg)
 
         with patch.object(client, "_ollama_complete", side_effect=ConnectionError("refused")):
@@ -55,6 +56,17 @@ class TestFreeLLMClient:
             ):
                 result = await client.complete("hello")
         assert result == "groq response"
+
+    @pytest.mark.asyncio
+    async def test_complete_raises_when_ollama_unavailable_and_groq_disabled(self):
+        from nexus_alpha.config import LLMConfig
+        from nexus_alpha.intelligence.free_llm import FreeLLMClient
+
+        client = FreeLLMClient.from_config(LLMConfig())
+
+        with patch.object(client, "_ollama_complete", side_effect=ConnectionError("refused")):
+            with pytest.raises(RuntimeError, match="Groq fallback is disabled"):
+                await client.complete("hello")
 
 
 # ─── HybridSentimentPipeline ─────────────────────────────────────────────────
@@ -274,7 +286,7 @@ class TestSentimentPipelineRunner:
         mock_pipeline = MagicMock()
         mock_pipeline.process_articles = AsyncMock(return_value=[])
 
-        monkeypatch.setattr(runner, "_ensure_sentiment_pipeline", lambda: mock_pipeline)
+        monkeypatch.setattr(runner, "_ensure_sentiment_pipeline", lambda **kwargs: mock_pipeline)
         monkeypatch.setattr(runner, "_collect_raw_articles", AsyncMock(return_value=[]))
         monkeypatch.setattr(
             runner,
@@ -316,7 +328,7 @@ class TestSentimentPipelineRunner:
             ]
         )
 
-        monkeypatch.setattr(runner, "_ensure_sentiment_pipeline", lambda: mock_pipeline)
+        monkeypatch.setattr(runner, "_ensure_sentiment_pipeline", lambda **kwargs: mock_pipeline)
         monkeypatch.setattr(
             runner,
             "_collect_raw_articles",
@@ -364,7 +376,7 @@ class TestLiveMarketIngestor:
 
         cfg = NexusConfig()
         multi = MultiExchangeIngestor(cfg)
-        assert len(multi._ingestors) >= 1
+        assert len(multi._ingestors) == 1
 
     def test_stop_sets_running_false(self):
         from nexus_alpha.data.live_ingestor import LiveMarketIngestor
@@ -373,6 +385,209 @@ class TestLiveMarketIngestor:
         ingestor._running = True
         ingestor.stop()
         assert ingestor._running is False
+
+    def test_orderbook_depth_is_exchange_safe(self):
+        from nexus_alpha.data.live_ingestor import LiveMarketIngestor
+
+        assert LiveMarketIngestor("binance", ["BTC/USDT"])._orderbook_depth() == 20
+        assert LiveMarketIngestor("bybit", ["BTC/USDT"])._orderbook_depth() == 50
+
+    def test_exchange_specific_stream_configuration(self):
+        from nexus_alpha.data.live_ingestor import LiveMarketIngestor
+
+        binance = LiveMarketIngestor("binance", ["BTC/USDT"])
+        bybit = LiveMarketIngestor("bybit", ["BTC/USDT"])
+
+        assert binance._exchange_options()["defaultType"] == "spot"
+        assert binance._exchange_options()["loadAllOptions"] is False
+        assert binance._stream_params() == {}
+        assert bybit._exchange_options()["defaultType"] == "spot"
+        assert bybit._exchange_options()["defaultSubType"] == "spot"
+        assert bybit._stream_params() == {"category": "spot"}
+        assert "apiKey" not in binance._build_exchange_config()
+
+    def test_binance_ticks_are_cached_for_trading_loop(self):
+        import json
+
+        from nexus_alpha.data.live_ingestor import LiveMarketIngestor
+
+        class _FakePipe:
+            def __init__(self):
+                self.calls = []
+
+            def setex(self, key, ttl, value):
+                self.calls.append((key, ttl, value))
+                return self
+
+            def execute(self):
+                return None
+
+        class _FakeRedis:
+            def __init__(self):
+                self.values = {}
+                self.pipe = _FakePipe()
+
+            def get(self, key):
+                return self.values.get(key)
+
+            def pipeline(self):
+                self.pipe = _FakePipe()
+                return self.pipe
+
+        ingestor = LiveMarketIngestor("binance", ["BTC/USDT"])
+        ingestor._redis = _FakeRedis()
+        ingestor._redis.values["ohlcv:BTCUSDT"] = json.dumps(
+            [{"timestamp": "2024-01-01T00:00:00", "open": 1, "high": 2, "low": 1, "close": 2, "volume": 3}]
+        )
+
+        ingestor._cache_tick(
+            {
+                "schema": "ohlcv_v1",
+                "symbol": "BTCUSDT",
+                "timestamp": "2024-01-01T00:01:00",
+                "open": 2.0,
+                "high": 3.0,
+                "low": 1.5,
+                "close": 2.5,
+                "volume": 4.0,
+            }
+        )
+
+        keys = [call[0] for call in ingestor._redis.pipe.calls]
+        assert "ohlcv:BTCUSDT" in keys
+        assert "price:BTCUSDT" in keys
+
+    def test_ohlcv_window_cache_populates_history(self):
+        import json
+
+        from nexus_alpha.data.live_ingestor import LiveMarketIngestor
+
+        class _FakePipe:
+            def __init__(self):
+                self.calls = []
+
+            def setex(self, key, ttl, value):
+                self.calls.append((key, ttl, value))
+                return self
+
+            def execute(self):
+                return None
+
+        class _FakeRedis:
+            def __init__(self):
+                self.pipe = _FakePipe()
+                self.values = {}
+
+            def get(self, key):
+                return self.values.get(key)
+
+            def pipeline(self):
+                self.pipe = _FakePipe()
+                return self.pipe
+
+        ingestor = LiveMarketIngestor("binance", ["BTC/USDT"])
+        ingestor._redis = _FakeRedis()
+        ingestor._cache_ohlcv_window(
+            "BTC/USDT",
+            [
+                [1704067200000, 1.0, 2.0, 0.5, 1.5, 10.0],
+                [1704067260000, 1.5, 2.5, 1.0, 2.0, 12.0],
+            ],
+        )
+
+        history_call = next(call for call in ingestor._redis.pipe.calls if call[0] == "ohlcv:BTCUSDT")
+        rows = json.loads(history_call[2])
+        assert len(rows) == 2
+        assert rows[-1]["close"] == 2.0
+
+    def test_normalize_testnet_order_request_respects_notional(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
+        from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
+        from nexus_alpha.signals.signal_engine import SignalFusionEngine
+
+        class _FakeExchange:
+            def price_to_precision(self, symbol, price):
+                return f"{price:.2f}"
+
+            def amount_to_precision(self, symbol, amount):
+                return f"{amount:.5f}"
+
+        config = NexusConfig()
+        loop = TradingLoopOrchestrator(
+            config=config,
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(risk_config=config.risk),
+            alerts=MagicMock(),
+        )
+        price, quantity = loop._normalize_testnet_order_request(
+            exchange=_FakeExchange(),
+            market={
+                "limits": {
+                    "amount": {"min": 0.00001},
+                    "cost": {"min": 5.0},
+                },
+                "precision": {"amount": 0.00001},
+            },
+            symbol="BTC/USDT",
+            quantity=0.00001,
+            price=36000.0,
+        )
+
+        assert price == 36000.0
+        assert quantity * price >= 5.0
+
+    def test_exchange_symbol_normalizes_compact_pairs(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
+        from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
+        from nexus_alpha.signals.signal_engine import SignalFusionEngine
+
+        config = NexusConfig()
+        loop = TradingLoopOrchestrator(
+            config=config,
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(risk_config=config.risk),
+            alerts=MagicMock(),
+        )
+
+        assert loop._exchange_symbol("ADAUSDT") == "ADA/USDT"
+        assert loop._exchange_symbol("BTC/USDT") == "BTC/USDT"
+
+    def test_cap_quantity_to_available_balance_respects_quote_balance(self):
+        from nexus_alpha.config import NexusConfig
+        from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
+        from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
+        from nexus_alpha.signals.signal_engine import SignalFusionEngine
+        from nexus_alpha.types import OrderSide
+
+        class _FakeExchange:
+            def amount_to_precision(self, symbol, amount):
+                return f"{amount:.5f}"
+
+        config = NexusConfig()
+        loop = TradingLoopOrchestrator(
+            config=config,
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(risk_config=config.risk),
+            alerts=MagicMock(),
+        )
+
+        capped = loop._cap_quantity_to_available_balance(
+            exchange=_FakeExchange(),
+            market={
+                "base": "ADA",
+                "quote": "USDT",
+                "limits": {"amount": {"min": 0.1}, "cost": {"min": 5.0}},
+            },
+            symbol="ADA/USDT",
+            side=OrderSide.BUY,
+            quantity=1000.0,
+            price=1.0,
+            balance={"free": {"USDT": 100.0}},
+        )
+
+        assert capped == 95.0
 
 
 # ─── TelegramAlerts ───────────────────────────────────────────────────────────
@@ -392,6 +607,67 @@ class TestTelegramAlerts:
         result = await alerts.send("test message")
         # Should return False gracefully, not raise
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_retries_once_on_transport_error(self, monkeypatch: pytest.MonkeyPatch):
+        from nexus_alpha.alerts.telegram import TelegramAlerts
+
+        created_clients: list[object] = []
+
+        class _FakeClient:
+            def __init__(self):
+                self.calls = 0
+                self.closed = False
+                created_clients.append(self)
+
+            async def post(self, *args, **kwargs):
+                self.calls += 1
+                if len(created_clients) == 1:
+                    raise httpx.ConnectError("flaky")
+                return httpx.Response(200, request=httpx.Request("POST", "https://api.telegram.org"))
+
+            async def aclose(self):
+                self.closed = True
+
+        monkeypatch.setattr("nexus_alpha.alerts.telegram.httpx.AsyncClient", lambda *a, **kw: _FakeClient())
+
+        alerts = TelegramAlerts(bot_token="token", chat_id="chat")
+        assert await alerts.send("test message") is True
+        assert len(created_clients) == 2
+        assert created_clients[0].closed is True
+        await alerts.aclose()
+        assert created_clients[1].closed is True
+
+
+# ─── Crawl4AI intelligence ─────────────────────────────────────────────────────
+
+class TestCrawl4AIIntelligence:
+    @pytest.mark.asyncio
+    async def test_crawl_agent_normalizes_items(self, monkeypatch: pytest.MonkeyPatch):
+        from nexus_alpha.intelligence.crawl4ai_agents import Crawl4AINewsAgent
+
+        monkeypatch.setattr(
+            "nexus_alpha.intelligence.crawl4ai_agents._crawl_url_with_ollama",
+            AsyncMock(
+                return_value=[
+                    {
+                        "headline": "Bitcoin surges after ETF inflows",
+                        "summary": "BTC jumps as spot ETF demand rises.",
+                        "url": "https://example.test/btc",
+                        "affected_symbols": ["BTC"],
+                        "urgency": "high",
+                    }
+                ]
+            ),
+        )
+
+        agent = Crawl4AINewsAgent(target_urls=["https://example.test/news"], max_items_per_target=3)
+        reports = await agent.fetch()
+
+        assert len(reports) == 1
+        assert reports[0].headline.startswith("Bitcoin surges")
+        assert reports[0].affected_symbols == ["BTC"]
+        assert reports[0].urgency.value == "high"
 
 
 # ─── NexusAlphaStrategy FreqAI guard ─────────────────────────────────────────
@@ -432,6 +708,43 @@ class TestNexusAlphaStrategyDoPredict:
         )
         assert ml_signal.any(), "Fallback signal should trigger on test data"
 
+    def test_strategy_toggle_env_parsing(self, monkeypatch: pytest.MonkeyPatch):
+        import importlib.util
+        from pathlib import Path
+
+        ft_stub = types.ModuleType("freqtrade")
+        ft_strategy_stub = types.ModuleType("freqtrade.strategy")
+
+        class _IStrategy:
+            def __init__(self, config=None):
+                self.dp = MagicMock()
+                self.wallets = MagicMock()
+
+        ft_strategy_stub.IStrategy = _IStrategy
+        ft_strategy_stub.DecimalParameter = lambda *a, **kw: MagicMock(value=kw.get("default", 0.1))
+        ft_strategy_stub.IntParameter = lambda *a, **kw: MagicMock(value=kw.get("default", 1))
+        talib_stub = types.ModuleType("talib")
+        talib_abstract_stub = types.ModuleType("talib.abstract")
+        sys.modules["freqtrade"] = ft_stub
+        sys.modules["freqtrade.strategy"] = ft_strategy_stub
+        sys.modules["talib"] = talib_stub
+        sys.modules["talib.abstract"] = talib_abstract_stub
+
+        strategy_path = Path(__file__).resolve().parents[2] / "freqtrade/strategies/NexusAlphaStrategy.py"
+        spec = importlib.util.spec_from_file_location("nexus_alpha_freqtrade_strategy_test", strategy_path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        strategy = module.NexusAlphaStrategy()
+
+        monkeypatch.setenv("NEXUS_ENABLE_TREND", "false")
+        monkeypatch.setenv("NEXUS_ENABLE_MEAN_REVERSION", "1")
+        monkeypatch.setenv("NEXUS_ENABLE_REGIME_FILTER", "no")
+
+        assert strategy._trend_entries_enabled() is False
+        assert strategy._mean_reversion_entries_enabled() is True
+        assert strategy._regime_filter_enabled() is False
+
 
 # ─── CLI command registration ─────────────────────────────────────────────────
 
@@ -452,3 +765,15 @@ class TestCLICommands:
         runner = CliRunner()
         result = runner.invoke(cli, ["health", "--help"])
         assert result.exit_code == 0
+
+    def test_crawl_intel_command_exists(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["crawl-intel", "--help"])
+        assert result.exit_code == 0
+        assert "crawl" in result.output.lower()
+
+    def test_sentiment_once_command_exists(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["sentiment-once", "--help"])
+        assert result.exit_code == 0
+        assert "sentiment" in result.output.lower()

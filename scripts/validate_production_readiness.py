@@ -13,17 +13,9 @@ from urllib.parse import urlparse
 REQUIRED_ENV_KEYS = [
     "BINANCE_API_KEY",
     "BINANCE_API_SECRET",
-    "BYBIT_API_KEY",
-    "BYBIT_API_SECRET",
-    "KRAKEN_API_KEY",
-    "KRAKEN_API_SECRET",
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
     "TIMESCALEDB_URL",
     "REDIS_URL",
     "KAFKA_BOOTSTRAP_SERVERS",
-    "VAULT_ADDR",
-    "VAULT_TOKEN",
 ]
 
 
@@ -116,7 +108,9 @@ def run_network_checks() -> list[str]:
     targets.extend(parse_bootstrap_servers(os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")))
     targets.append(parse_url_host_port(os.getenv("REDIS_URL", ""), 6379))
     targets.append(parse_url_host_port(os.getenv("TIMESCALEDB_URL", ""), 5432))
-    targets.append(parse_url_host_port(os.getenv("VAULT_ADDR", ""), 8200))
+    vault_addr = os.getenv("VAULT_ADDR", "").strip()
+    if vault_addr:
+        targets.append(parse_url_host_port(vault_addr, 8200))
 
     for host, port, label in targets:
         if not host:
