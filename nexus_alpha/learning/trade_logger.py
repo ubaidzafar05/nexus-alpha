@@ -64,6 +64,10 @@ class TradeRecord:
     # Status
     status: str = "open"  # open, closed, stopped_out
 
+    # G3: Rich telemetry (JSON-encoded)
+    entry_context: str = ""  # JSON: mtf_alignment, pair_quality, regime, guards passed
+    exit_context: str = ""   # JSON: exit_reason, regime_at_exit, mtf_at_exit
+
 
 class TradeLogger:
     """
@@ -100,7 +104,9 @@ class TradeLogger:
                     hold_duration_seconds REAL DEFAULT 0,
                     reward REAL DEFAULT 0,
                     status TEXT DEFAULT 'open',
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    entry_context TEXT DEFAULT '',
+                    exit_context TEXT DEFAULT ''
                 )
             """)
             conn.execute("""
@@ -109,6 +115,15 @@ class TradeLogger:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)
             """)
+            # Migrate: add telemetry columns to existing tables
+            try:
+                conn.execute("ALTER TABLE trades ADD COLUMN entry_context TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            try:
+                conn.execute("ALTER TABLE trades ADD COLUMN exit_context TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS learning_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,20 +138,21 @@ class TradeLogger:
         return sqlite3.connect(str(self._db_path))
 
     def log_trade_open(self, record: TradeRecord) -> None:
-        """Log a new trade entry."""
+        """Log a new trade entry with full telemetry context."""
         with self._conn() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO trades
                 (trade_id, timestamp, symbol, side, entry_price, quantity, notional_usd,
                  signal_direction, signal_confidence, contributing_signals,
-                 sentiment_score, regime, feature_vector, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')
+                 sentiment_score, regime, feature_vector, entry_context, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')
             """, (
                 record.trade_id, record.timestamp, record.symbol, record.side,
                 record.entry_price, record.quantity, record.notional_usd,
                 record.signal_direction, record.signal_confidence,
                 record.contributing_signals, record.sentiment_score,
                 record.regime, record.feature_vector,
+                record.entry_context,
             ))
         logger.info("trade_logged", trade_id=record.trade_id, symbol=record.symbol)
 
@@ -146,8 +162,9 @@ class TradeLogger:
         exit_price: float,
         realized_pnl: float,
         reward: float | None = None,
+        exit_context: str = "",
     ) -> None:
-        """Update a trade with exit info and compute reward."""
+        """Update a trade with exit info, compute reward, and store exit context."""
         now = datetime.utcnow().isoformat()
 
         with self._conn() as conn:
@@ -182,9 +199,10 @@ class TradeLogger:
                     realized_pnl_pct = ?,
                     hold_duration_seconds = ?,
                     reward = ?,
-                    status = 'closed'
+                    status = 'closed',
+                    exit_context = ?
                 WHERE trade_id = ?
-            """, (exit_price, now, realized_pnl, pnl_pct, hold_seconds, reward, trade_id))
+            """, (exit_price, now, realized_pnl, pnl_pct, hold_seconds, reward, exit_context, trade_id))
 
         logger.info(
             "trade_closed",

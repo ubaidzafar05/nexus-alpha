@@ -372,11 +372,15 @@ class TestRunAndStop:
         from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
 
         config = _make_config()
+        alerts = MagicMock()
+        alerts.trade_opened = AsyncMock()
+        alerts.risk_alert = AsyncMock()
+        alerts.send = AsyncMock()
         loop = TradingLoopOrchestrator(
             config=config,
             signal_engine=SignalFusionEngine(),
             circuit_breaker=CircuitBreakerSystem(),
-            alerts=MagicMock(),
+            alerts=alerts,
             cycle_interval_s=0.1,
         )
 

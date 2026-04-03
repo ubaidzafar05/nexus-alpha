@@ -66,6 +66,8 @@ MAX_DRAWDOWN_HALT = 0.15       # Stop trading after 15% drawdown
 PARTIAL_TP_FRACTION = 0.5      # Close 50% at take-profit, trail the rest
 MOMENTUM_LOOKBACK = 5          # Candles to check for momentum direction
 MIN_VOLUME_RATIO = 0.5         # Min volume vs 20-period average to trade
+MEAN_REVERSION_ZSCORE = 2.0    # Z-score threshold for mean-reversion signals
+STALE_POSITION_HOURS = 48      # Close positions older than this
 
 # Crypto correlation clusters — highly correlated pairs share exposure budget
 CORRELATION_CLUSTERS = {
@@ -73,6 +75,15 @@ CORRELATION_CLUSTERS = {
     "altcoin": {"BNBUSDT", "ADAUSDT"},
 }
 MAX_CLUSTER_POSITIONS = 2  # Max positions from same correlation cluster
+
+# Regime-based confidence multipliers
+REGIME_CONFIDENCE = {
+    "strong_trend": 1.2,    # High confidence in trends
+    "weak_trend": 1.0,      # Normal
+    "range_bound": 0.7,     # Reduce in choppy markets
+    "high_volatility": 0.6, # Be cautious in high vol
+    "unknown": 0.9,
+}
 
 
 @dataclass
@@ -431,6 +442,169 @@ class TradingLoopOrchestrator:
             return True
         except Exception:
             return True
+
+    # ── F1: Signal-conflict arbitration ──────────────────────────────────
+
+    def _arbitrate_signals(self, signals: list[FusedSignal]) -> list[FusedSignal]:
+        """
+        Resolve conflicting signals. When correlated pairs disagree
+        on direction, keep only the strongest signal from each cluster.
+        Also ranks by pair quality score.
+        """
+        if not signals:
+            return []
+
+        # Score each signal by pair quality × signal strength
+        scored = []
+        for sig in signals:
+            quality = self._pair_quality_score(sig.symbol)
+            composite = abs(sig.direction) * sig.confidence * quality
+            scored.append((composite, quality, sig))
+
+        # Sort by composite score (best first)
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Resolve cluster conflicts: for each cluster, pick the best signal
+        # and ensure all signals from that cluster agree on direction
+        cluster_direction: dict[str, float] = {}
+        accepted: list[FusedSignal] = []
+
+        for composite, quality, sig in scored:
+            cluster = self._cluster_for_symbol(sig.symbol) or sig.symbol
+            if cluster in cluster_direction:
+                # Cluster already committed — only accept if same direction
+                if (sig.direction > 0) != (cluster_direction[cluster] > 0):
+                    logger.info(
+                        "signal_conflict_rejected",
+                        symbol=sig.symbol,
+                        cluster=cluster,
+                        direction=f"{sig.direction:.3f}",
+                        cluster_direction=f"{cluster_direction[cluster]:.3f}",
+                    )
+                    continue
+            else:
+                cluster_direction[cluster] = sig.direction
+
+            accepted.append(sig)
+
+        return accepted
+
+    # ── F2: Pair quality scoring ──────────────────────────────────────────
+
+    def _pair_quality_score(self, symbol: str) -> float:
+        """
+        Score a symbol's current tradability (0.0–1.0) based on:
+        - Volume relative to average (higher = better)
+        - Recent volatility (moderate = best)
+        - Spread implied from OHLC (tighter = better)
+        """
+        df = self._build_feature_dataframe(symbol)
+        if df is None or len(df) < 30:
+            return 0.5  # neutral
+
+        close = pd.to_numeric(df["close"], errors="coerce")
+        high = pd.to_numeric(df["high"], errors="coerce")
+        low = pd.to_numeric(df["low"], errors="coerce")
+        volume = pd.to_numeric(df["volume"], errors="coerce")
+
+        # Volume score: current vs 20-period avg (0–1, capped at 2x avg)
+        vol_avg = volume.rolling(20).mean().iloc[-1]
+        vol_now = volume.iloc[-1]
+        vol_score = min(vol_now / vol_avg, 2.0) / 2.0 if vol_avg > 0 else 0.5
+
+        # Volatility score: prefer moderate (1-3% 24h range). Too low = no move, too high = unpredictable
+        returns = close.pct_change().dropna()
+        vol_24h = returns.tail(24).std() * 100 if len(returns) >= 24 else 1.0
+        if vol_24h < 0.3:
+            vol_quality = 0.3  # Too quiet
+        elif vol_24h > 5.0:
+            vol_quality = 0.4  # Too wild
+        else:
+            vol_quality = 1.0 - abs(vol_24h - 1.5) / 5.0  # Sweet spot ~1.5%
+
+        # Spread score: (high-low)/close as proxy for spread + slippage
+        spread_pct = ((high.iloc[-1] - low.iloc[-1]) / close.iloc[-1]) if close.iloc[-1] > 0 else 0.1
+        spread_score = max(0.0, 1.0 - spread_pct * 20)  # 5% range = 0.0, 0% = 1.0
+
+        quality = vol_score * 0.4 + vol_quality * 0.35 + spread_score * 0.25
+        return round(max(0.0, min(quality, 1.0)), 3)
+
+    # ── F3: Mean-reversion overlay ────────────────────────────────────────
+
+    def _mean_reversion_signal(self, symbol: str) -> float | None:
+        """
+        Detect mean-reversion opportunities in range-bound markets.
+        Returns a signal [-1, 1] if conditions met, None if no signal.
+        Fires when price is >2 std devs from 50-period mean.
+        """
+        df = self._build_feature_dataframe(symbol)
+        if df is None or len(df) < 60:
+            return None
+
+        close = pd.to_numeric(df["close"], errors="coerce")
+        ma = close.rolling(50).mean()
+        std = close.rolling(50).std()
+
+        if std.iloc[-1] <= 0 or pd.isna(std.iloc[-1]):
+            return None
+
+        zscore = (close.iloc[-1] - ma.iloc[-1]) / std.iloc[-1]
+
+        # Only fire in range-bound (ADX < 25 proxy: low trend strength)
+        ret_20 = close.pct_change(20).iloc[-1] if len(close) > 20 else 0
+        is_trending = abs(ret_20) > 0.05  # >5% move in 20 candles = trending
+
+        if is_trending:
+            return None
+
+        if zscore > MEAN_REVERSION_ZSCORE:
+            return -min(zscore / 3.0, 1.0)  # Overbought → sell signal
+        elif zscore < -MEAN_REVERSION_ZSCORE:
+            return min(-zscore / 3.0, 1.0)  # Oversold → buy signal
+
+        return None
+
+    # ── F4: Dynamic confidence thresholds ─────────────────────────────────
+
+    def _detect_regime(self, symbol: str = "BTCUSDT") -> str:
+        """
+        Detect current market regime from BTC price action.
+        Returns: 'strong_trend', 'weak_trend', 'range_bound', 'high_volatility'
+        """
+        df = self._build_feature_dataframe(symbol)
+        if df is None or len(df) < 50:
+            return "unknown"
+
+        close = pd.to_numeric(df["close"], errors="coerce")
+        returns = close.pct_change().dropna()
+
+        if len(returns) < 30:
+            return "unknown"
+
+        # Volatility regime
+        vol_recent = returns.tail(24).std()
+        vol_long = returns.tail(168).std() if len(returns) >= 168 else vol_recent
+        vol_ratio = vol_recent / vol_long if vol_long > 0 else 1.0
+
+        # Trend strength
+        sma20 = close.rolling(20).mean().iloc[-1]
+        sma50 = close.rolling(50).mean().iloc[-1]
+        trend_strength = abs(sma20 - sma50) / sma50 if sma50 > 0 else 0
+
+        if vol_ratio > 1.5:
+            return "high_volatility"
+        elif trend_strength > 0.03:
+            return "strong_trend"
+        elif trend_strength > 0.01:
+            return "weak_trend"
+        else:
+            return "range_bound"
+
+    def _regime_confidence_multiplier(self) -> float:
+        """Get confidence multiplier based on current market regime."""
+        regime = self._detect_regime()
+        multiplier = REGIME_CONFIDENCE.get(regime, 0.9)
+        return multiplier
 
     # ── C1-C4: Multi-timeframe alignment ──────────────────────────────────
 
@@ -809,6 +983,13 @@ class TradingLoopOrchestrator:
         fv = self._get_feature_vector(symbol, df) if df is not None else None
         sentiment = self._get_sentiment(symbol.replace("USDT", ""))
 
+        # Build entry context telemetry (G3)
+        entry_ctx = {
+            "contributing_signals": decision.signal.contributing_signals,
+            "regime": self._detect_regime(),
+            "pair_quality": self._pair_quality_score(symbol),
+        }
+
         self._trade_logger.log_trade_open(TradeRecord(
             trade_id=order_id,
             timestamp=datetime.utcnow().isoformat(),
@@ -821,8 +1002,9 @@ class TradingLoopOrchestrator:
             signal_confidence=decision.signal.confidence,
             contributing_signals=_json.dumps(decision.signal.contributing_signals),
             sentiment_score=sentiment,
-            regime="unknown",
+            regime=entry_ctx["regime"],
             feature_vector=_json.dumps(fv) if fv else "[]",
+            entry_context=_json.dumps(entry_ctx),
         ))
 
         await self._alerts.trade_opened({
@@ -1114,6 +1296,19 @@ class TradingLoopOrchestrator:
             if age_hours > 48 and pos not in [p for p, _, _ in positions_to_close]:
                 positions_to_close.append((pos, current_price, "time_exit_48h"))
 
+            # G1: Regime-aware exit — close if regime flipped against position
+            if pos not in [p for p, _, _ in positions_to_close]:
+                mtf_score = self._multi_timeframe_alignment(
+                    pos.symbol,
+                    1.0 if pos.side == OrderSide.BUY else -1.0,
+                )
+                # If MTF strongly disagrees AND position is losing, exit
+                if mtf_score < 0.2 and pnl_pct < -0.005:
+                    positions_to_close.append((pos, current_price, "regime_flip"))
+                # If been holding >4h with MTF disagreeing and not winning, exit
+                elif mtf_score < 0.35 and age_hours > 4 and pnl_pct < 0.002:
+                    positions_to_close.append((pos, current_price, "regime_decay"))
+
         for pos, exit_price, reason in positions_to_close:
             # B5: Partial take-profit — close PARTIAL_TP_FRACTION at TP, trail the rest
             close_quantity = pos.quantity
@@ -1149,7 +1344,15 @@ class TradingLoopOrchestrator:
                 if pos in self._portfolio.positions:
                     self._portfolio.positions.remove(pos)
 
-            # Log the closed trade for learning
+            # Log the closed trade for learning with exit context (G3)
+            exit_ctx = _json.dumps({
+                "exit_reason": reason + ("_partial" if is_partial else ""),
+                "regime_at_exit": self._detect_regime(),
+                "mtf_at_exit": self._multi_timeframe_alignment(
+                    pos.symbol, 1.0 if pos.side == OrderSide.BUY else -1.0,
+                ),
+                "pair_quality_at_exit": self._pair_quality_score(pos.symbol),
+            })
             open_trades = self._trade_logger.get_open_trades()
             for t in open_trades:
                 if t["symbol"] == pos.symbol:
@@ -1157,6 +1360,7 @@ class TradingLoopOrchestrator:
                         trade_id=t["trade_id"],
                         exit_price=exit_price,
                         realized_pnl=pnl,
+                        exit_context=exit_ctx,
                     )
                     break
 
@@ -1246,10 +1450,34 @@ class TradingLoopOrchestrator:
 
         # 5. Generate signals
         signals = self._generate_signals(symbols)
+
+        # 5a. Add mean-reversion signals for range-bound symbols
+        signaled_symbols = {s.symbol for s in signals}
+        for sym in symbols:
+            if sym not in signaled_symbols:
+                mr_signal = self._mean_reversion_signal(sym)
+                if mr_signal is not None and abs(mr_signal) >= MIN_SIGNAL_CONFIDENCE:
+                    signals.append(FusedSignal(
+                        symbol=sym,
+                        direction=mr_signal,
+                        confidence=abs(mr_signal) * 0.8,
+                        contributing_signals={"mean_reversion": mr_signal},
+                    ))
+
         if not signals:
             logger.info("no_signals_generated", symbols_checked=len(symbols))
             self._save_portfolio()
             return
+
+        # 5b. Arbitrate conflicting signals (cluster-aware, quality-ranked)
+        signals = self._arbitrate_signals(signals)
+        if not signals:
+            logger.info("signals_all_conflicted", msg="All signals removed by conflict arbitration")
+            self._save_portfolio()
+            return
+
+        # 5c. Apply regime-based confidence multiplier
+        regime_mult = self._regime_confidence_multiplier()
 
         logger.info(
             "signals_generated",
@@ -1257,6 +1485,7 @@ class TradingLoopOrchestrator:
             symbols=[s.symbol for s in signals],
             directions=[f"{s.direction:.2f}" for s in signals],
             confidences=[f"{s.confidence:.2f}" for s in signals],
+            regime_multiplier=f"{regime_mult:.2f}",
         )
 
         self._metrics.last_signal_at = time.monotonic()
@@ -1319,7 +1548,14 @@ class TradingLoopOrchestrator:
 
             # C1-C4: Multi-timeframe alignment boost/penalty
             mtf_alignment = self._multi_timeframe_alignment(fused.symbol, fused.direction)
-            adjusted_confidence *= (0.5 + 0.5 * mtf_alignment)  # 50-100% of base confidence
+            adjusted_confidence *= (0.5 + 0.5 * mtf_alignment)
+
+            # F4: Regime-based confidence adjustment
+            adjusted_confidence *= regime_mult
+
+            # F2: Pair quality scaling
+            pair_quality = self._pair_quality_score(fused.symbol)
+            adjusted_confidence *= (0.6 + 0.4 * pair_quality)  # 60-100% based on quality
 
             fused = FusedSignal(
                 symbol=fused.symbol,
@@ -1328,6 +1564,8 @@ class TradingLoopOrchestrator:
                 contributing_signals={
                     **fused.contributing_signals,
                     "mtf_alignment": mtf_alignment,
+                    "pair_quality": pair_quality,
+                    "regime_mult": regime_mult,
                 },
                 timestamp=fused.timestamp,
             )
