@@ -438,27 +438,31 @@ class TradingLoopOrchestrator:
         """
         Check if higher timeframes agree with the 1h signal direction.
         Returns an alignment score 0.0–1.0 (1.0 = all timeframes agree).
+        Uses the 1-min Redis data aggregated to approximate higher TFs.
         """
         scores = [1.0]  # 1h always counts as aligned with itself
 
         df = self._build_feature_dataframe(symbol)
-        if df is None:
+        if df is None or len(df) < 240:
+            return 1.0
+
+        try:
+            features = build_features(df)
+            feature_cols = [c for c in features.columns if not c.startswith("target_")]
+            if len(features) == 0:
+                return 1.0
+            last_row = features[feature_cols].iloc[-1].values.astype(np.float32)
+        except Exception:
             return 1.0
 
         # Check 4h model
         predictor_4h = self._ml_predictors.get(f"{symbol}_4h")
         if predictor_4h:
             try:
-                features = build_features(df)
-                feature_cols = [c for c in features.columns if not c.startswith("target_")]
-                if len(features) > 0:
-                    last_row = features[feature_cols].iloc[-1].values.astype(np.float32)
-                    pred = predictor_4h.predict(last_row)
-                    if pred and abs(pred["signal"]) > 0.01:
-                        agrees = (pred["signal"] > 0 and direction_1h > 0) or (
-                            pred["signal"] < 0 and direction_1h < 0
-                        )
-                        scores.append(1.0 if agrees else 0.0)
+                pred = predictor_4h.predict(last_row)
+                if pred and abs(pred["signal"]) > 0.01:
+                    agrees = (pred["signal"] > 0) == (direction_1h > 0)
+                    scores.append(1.0 if agrees else 0.0)
             except Exception:
                 pass
 
@@ -466,24 +470,18 @@ class TradingLoopOrchestrator:
         predictor_1d = self._ml_predictors.get(f"{symbol}_1d")
         if predictor_1d:
             try:
-                features = build_features(df)
-                feature_cols = [c for c in features.columns if not c.startswith("target_")]
-                if len(features) > 0:
-                    last_row = features[feature_cols].iloc[-1].values.astype(np.float32)
-                    pred = predictor_1d.predict(last_row)
-                    if pred and abs(pred["signal"]) > 0.01:
-                        agrees = (pred["signal"] > 0 and direction_1h > 0) or (
-                            pred["signal"] < 0 and direction_1h < 0
-                        )
-                        scores.append(1.0 if agrees else 0.0)
+                pred = predictor_1d.predict(last_row)
+                if pred and abs(pred["signal"]) > 0.01:
+                    agrees = (pred["signal"] > 0) == (direction_1h > 0)
+                    scores.append(1.0 if agrees else 0.0)
             except Exception:
                 pass
 
-        # Also check simple price trend as proxy
-        if len(df) > 24:
-            close = pd.to_numeric(df["close"], errors="coerce")
+        # Price trend confirmation
+        close = pd.to_numeric(df["close"], errors="coerce")
+        if len(close) > 24:
             trend_24h = close.iloc[-1] / close.iloc[-24] - 1 if close.iloc[-24] > 0 else 0
-            agrees = (trend_24h > 0 and direction_1h > 0) or (trend_24h < 0 and direction_1h < 0)
+            agrees = (trend_24h > 0) == (direction_1h > 0)
             scores.append(1.0 if agrees else 0.3)
 
         return sum(scores) / len(scores)

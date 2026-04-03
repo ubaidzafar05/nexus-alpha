@@ -5,7 +5,8 @@ Supports two model tiers:
 1. Lightweight: scikit-learn GradientBoosting (runs without torch)
 2. Heavy: WorldModel TFT if torch is available
 
-The lightweight model is always available and is the production default.
+The lightweight model uses GradientBoostingClassifier for direction prediction
+(up/down) which is what trading actually needs, plus a regressor for magnitude.
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ import time
 from pathlib import Path
 
 import numpy as np
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+from sklearn.metrics import accuracy_score, mean_absolute_error, r2_score
 
 from nexus_alpha.learning.historical_data import (
     build_features,
@@ -33,14 +34,14 @@ CHECKPOINT_DIR = Path("data/checkpoints")
 
 class LightweightPredictor:
     """
-    GradientBoosting model for return prediction.
-    Always available (sklearn is in base deps), fast to train, and
-    surprisingly effective for 1h/4h return prediction.
+    Dual-model predictor: GradientBoosting classifier for direction + regressor for magnitude.
+    The classifier is the primary decision maker; the regressor provides confidence scaling.
     """
 
     def __init__(self, target_horizon: str = "target_1h"):
         self.target_horizon = target_horizon
         self.model: GradientBoostingRegressor | None = None
+        self.classifier: GradientBoostingClassifier | None = None
         self.feature_names: list[str] = []
         self.training_stats: dict = {}
 
@@ -48,9 +49,9 @@ class LightweightPredictor:
         self,
         symbol: str = "BTC/USDT",
         timeframe: str = "1h",
-        n_estimators: int = 500,
+        n_estimators: int = 800,
         max_depth: int = 5,
-        learning_rate: float = 0.05,
+        learning_rate: float = 0.03,
     ) -> dict:
         """Train on historical data. Returns performance metrics."""
         logger.info("training_started", symbol=symbol, timeframe=timeframe)
@@ -61,7 +62,12 @@ class LightweightPredictor:
 
         self.feature_names = data["feature_names"]
 
-        self.model = GradientBoostingRegressor(
+        # Direction classifier (up/down — the core trading decision)
+        y_train_dir = (data["y_train"] > 0).astype(int)
+        y_val_dir = (data["y_val"] > 0).astype(int)
+        y_test_dir = (data["y_test"] > 0).astype(int)
+
+        self.classifier = GradientBoostingClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             learning_rate=learning_rate,
@@ -70,25 +76,37 @@ class LightweightPredictor:
             max_features="sqrt",
             random_state=42,
         )
+        self.classifier.fit(data["X_train"], y_train_dir)
 
+        # Magnitude regressor (how much — for confidence scaling)
+        self.model = GradientBoostingRegressor(
+            n_estimators=n_estimators // 2,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            subsample=0.8,
+            min_samples_leaf=20,
+            max_features="sqrt",
+            random_state=42,
+        )
         self.model.fit(data["X_train"], data["y_train"])
 
-        # Evaluate
+        # Evaluate classifier
+        val_dir_pred = self.classifier.predict(data["X_val"])
+        test_dir_pred = self.classifier.predict(data["X_test"])
+        val_dir_acc = accuracy_score(y_val_dir, val_dir_pred)
+        test_dir_acc = accuracy_score(y_test_dir, test_dir_pred)
+
+        # Evaluate regressor
         val_pred = self.model.predict(data["X_val"])
         test_pred = self.model.predict(data["X_test"])
-
         val_mae = mean_absolute_error(data["y_val"], val_pred)
         test_mae = mean_absolute_error(data["y_test"], test_pred)
         val_r2 = r2_score(data["y_val"], val_pred)
         test_r2 = r2_score(data["y_test"], test_pred)
 
-        # Direction accuracy (most important for trading)
-        val_dir_acc = np.mean(np.sign(val_pred) == np.sign(data["y_val"]))
-        test_dir_acc = np.mean(np.sign(test_pred) == np.sign(data["y_test"]))
-
-        # Feature importance
+        # Feature importance (from classifier — direction is king)
         importances = sorted(
-            zip(self.feature_names, self.model.feature_importances_),
+            zip(self.feature_names, self.classifier.feature_importances_),
             key=lambda x: x[1],
             reverse=True,
         )
@@ -115,32 +133,52 @@ class LightweightPredictor:
 
     def predict(self, features: np.ndarray) -> dict:
         """
-        Predict forward returns from a feature vector.
-        Returns prediction + confidence estimate.
+        Predict direction and magnitude from a feature vector.
+        Uses classifier for direction, regressor for magnitude/confidence.
+        Falls back to regressor-only if classifier not available (old models).
         """
-        if self.model is None:
+        if self.model is None and self.classifier is None:
             return {"prediction": 0.0, "confidence": 0.0, "signal": 0.0}
 
         if features.ndim == 1:
             features = features.reshape(1, -1)
 
-        pred = float(self.model.predict(features)[0])
+        # Direction from classifier (if available)
+        if self.classifier is not None:
+            dir_proba = self.classifier.predict_proba(features)[0]
+            # proba[1] = probability of "up", proba[0] = probability of "down"
+            up_prob = float(dir_proba[1]) if len(dir_proba) > 1 else 0.5
+            direction = 1.0 if up_prob > 0.5 else -1.0
+            classifier_confidence = abs(up_prob - 0.5) * 2  # 0-1 scale
+        else:
+            direction = 0.0
+            classifier_confidence = 0.0
 
-        # Confidence from tree variance (pseudo-ensemble)
-        tree_preds = np.array([
-            tree[0].predict(features)[0]
-            for tree in self.model.estimators_
-        ])
-        pred_std = float(np.std(tree_preds))
+        # Magnitude from regressor
+        if self.model is not None:
+            pred = float(self.model.predict(features)[0])
+            tree_preds = np.array([
+                tree[0].predict(features)[0]
+                for tree in self.model.estimators_
+            ])
+            pred_std = float(np.std(tree_preds))
+        else:
+            pred = 0.0
+            pred_std = 0.0
 
-        # Direction signal: clip to [-1, 1], scaled by confidence
-        raw_signal = np.clip(pred * 100, -1, 1)  # Scale small returns to signal range
-        confidence = max(0.0, 1.0 - pred_std / (abs(pred) + 1e-8))
-        confidence = min(confidence, 1.0)
+        # Combine: direction from classifier, confidence from both
+        if self.classifier is not None:
+            raw_signal = direction * classifier_confidence
+            confidence = classifier_confidence
+        else:
+            # Legacy fallback for old regressor-only models
+            raw_signal = np.clip(pred * 100, -1, 1)
+            confidence = max(0.0, 1.0 - pred_std / (abs(pred) + 1e-8))
+            confidence = min(confidence, 1.0)
 
         return {
             "prediction": pred,
-            "confidence": round(confidence, 4),
+            "confidence": round(float(confidence), 4),
             "signal": round(float(raw_signal), 4),
             "std": round(pred_std, 6),
         }
@@ -152,6 +190,7 @@ class LightweightPredictor:
         with open(path, "wb") as f:
             pickle.dump({
                 "model": self.model,
+                "classifier": self.classifier,
                 "feature_names": self.feature_names,
                 "training_stats": self.training_stats,
             }, f)
@@ -167,6 +206,7 @@ class LightweightPredictor:
         with open(path, "rb") as f:
             data = pickle.load(f)
         self.model = data["model"]
+        self.classifier = data.get("classifier")  # None for old models
         self.feature_names = data["feature_names"]
         self.training_stats = data.get("training_stats", {})
         logger.info("model_loaded", path=str(path), stats=self.training_stats.get("test_direction_accuracy"))

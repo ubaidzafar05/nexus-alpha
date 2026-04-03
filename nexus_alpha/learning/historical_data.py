@@ -142,7 +142,7 @@ async def download_all(
 # ─── Feature Engineering ─────────────────────────────────────────────────────
 
 
-def build_features(df: pd.DataFrame, lookback: int = 60) -> pd.DataFrame:
+def build_features(df: pd.DataFrame, lookback: int = 200) -> pd.DataFrame:
     """
     Build ML-ready feature matrix from raw OHLCV data.
     All features are normalized and look-back safe (no future leakage).
@@ -210,6 +210,56 @@ def build_features(df: pd.DataFrame, lookback: int = 60) -> pd.DataFrame:
         feat[f"price_position_{window}"] = (
             ((close - roll_low) / range_size.replace(0, np.nan)) * 2 - 1
         ).clip(-1, 1)
+
+    # ── ADX (trend strength) ──
+    plus_dm = high.diff().clip(lower=0)
+    minus_dm = (-low.diff()).clip(lower=0)
+    mask = plus_dm < minus_dm
+    plus_dm[mask] = 0
+    minus_dm[~mask] = 0
+    tr14 = tr.rolling(14).mean()
+    plus_di = 100 * plus_dm.rolling(14).mean() / tr14.replace(0, np.nan)
+    minus_di = 100 * minus_dm.rolling(14).mean() / tr14.replace(0, np.nan)
+    di_sum = plus_di + minus_di
+    dx = 100 * (plus_di - minus_di).abs() / di_sum.replace(0, np.nan)
+    feat["adx"] = dx.rolling(14).mean() / 100  # 0-1 scale
+    feat["di_diff"] = (plus_di - minus_di) / 100  # Positive = bullish trend
+
+    # ── Mean-reversion z-scores ──
+    for window in [20, 50, 100]:
+        ma = close.rolling(window).mean()
+        std = close.rolling(window).std()
+        feat[f"zscore_{window}"] = ((close - ma) / std.replace(0, np.nan)).clip(-3, 3) / 3
+
+    # ── Volume-price divergence ──
+    price_up = (close.pct_change(5) > 0).astype(float)
+    vol_up = (volume.rolling(5).mean() > volume.rolling(20).mean()).astype(float)
+    feat["vol_price_diverge"] = price_up - vol_up  # +1=strong, -1=divergent
+
+    # ── Candle body and wick features ──
+    open_price = df["open"].astype(float)
+    body = (close - open_price).abs()
+    full_range = (high - low).replace(0, np.nan)
+    feat["body_ratio"] = body / full_range  # 0=doji, 1=full body
+    feat["upper_wick"] = (high - pd.concat([close, open_price], axis=1).max(axis=1)) / full_range
+    feat["lower_wick"] = (pd.concat([close, open_price], axis=1).min(axis=1) - low) / full_range
+    feat["candle_dir"] = np.sign(close - open_price)  # +1=green, -1=red
+
+    # ── Regime features ──
+    vol_short = ret1.rolling(24).std()
+    vol_long = ret1.rolling(168).std()
+    feat["vol_regime"] = (vol_short / vol_long.replace(0, np.nan)).clip(0, 3) / 3
+    sma50 = close.rolling(50).mean()
+    sma200 = close.rolling(200).mean()
+    feat["trend_regime"] = ((sma50 - sma200) / sma200.replace(0, np.nan)).clip(-0.5, 0.5) * 2
+
+    # ── Consecutive candle streaks ──
+    direction = np.sign(close.diff())
+    streak = direction.copy()
+    for i in range(1, len(streak)):
+        if direction.iloc[i] == direction.iloc[i - 1] and direction.iloc[i] != 0:
+            streak.iloc[i] = streak.iloc[i - 1] + direction.iloc[i]
+    feat["streak"] = streak.clip(-10, 10) / 10
 
     # ── Time features (cyclical) ──
     if "timestamp" in df.columns:
