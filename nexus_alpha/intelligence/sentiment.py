@@ -83,6 +83,11 @@ class FinBERTAnalyzer:
         if self._loaded:
             return
         try:
+            import os
+            # Prevent HuggingFace tokenizers from spawning subprocesses that
+            # crash on macOS when stdin/stdout are closed (nohup / /dev/null).
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
             from transformers import (  # type: ignore[import]
                 AutoModelForSequenceClassification,
                 AutoTokenizer,
@@ -96,6 +101,7 @@ class FinBERTAnalyzer:
                 model=model,
                 tokenizer=tokenizer,
                 device=-1,  # CPU
+                num_workers=0,  # no worker subprocesses — avoids bad-fd on closed stdin
             )
             self._loaded = True
             logger.info("finbert_loaded", model=self._model_name)
