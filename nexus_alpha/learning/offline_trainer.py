@@ -192,6 +192,26 @@ class LightweightPredictor:
             "std": round(pred_std, 6),
         }
 
+    def predict_batch(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Batch predict: returns (signals, confidences) arrays. Much faster than per-row."""
+        n = len(X)
+        signals = np.zeros(n)
+        confidences = np.zeros(n)
+        if self.classifier is None and self.model is None:
+            return signals, confidences
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        if self.classifier is not None:
+            proba = self.classifier.predict_proba(X)
+            up_prob = proba[:, 1] if proba.shape[1] > 1 else np.full(n, 0.5)
+            direction = np.where(up_prob > 0.5, 1.0, -1.0)
+            clf_conf = np.abs(up_prob - 0.5) * 2
+            signals = direction * clf_conf
+            confidences = clf_conf
+
+        return signals, confidences
+
     def save(self, path: Path | None = None) -> Path:
         """Save model checkpoint."""
         CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)

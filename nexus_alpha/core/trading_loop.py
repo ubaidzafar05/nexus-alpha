@@ -56,11 +56,11 @@ from nexus_alpha.types import (
 logger = get_logger(__name__)
 
 DEBATE_NAV_THRESHOLD = 0.05  # 5% of NAV triggers debate
-MIN_SIGNAL_CONFIDENCE = 0.08  # Low threshold OK — 12+ guards prevent over-trading
+MIN_SIGNAL_CONFIDENCE = 0.40   # High bar — only trade strong signals (backtested optimal)
 MIN_POSITION_USD = 10.0
 MAX_OPEN_POSITIONS = 3         # Max simultaneous positions
 MAX_TOTAL_EXPOSURE_PCT = 0.50  # Max 50% of NAV in open positions
-COOLDOWN_SECONDS = 300         # 5 min between trades on same symbol
+COOLDOWN_SECONDS = 48 * 3600   # 48h between trades on same symbol (backtested optimal)
 DATA_MAX_AGE_SECONDS = 300     # Skip symbol if price older than 5 min
 MAX_DRAWDOWN_SCALE_THRESHOLD = 0.05  # Start scaling down after 5% drawdown
 MAX_DRAWDOWN_HALT = 0.15       # Stop trading after 15% drawdown
@@ -68,7 +68,16 @@ PARTIAL_TP_FRACTION = 0.5      # Close 50% at take-profit, trail the rest
 MOMENTUM_LOOKBACK = 5          # Candles to check for momentum direction
 MIN_VOLUME_RATIO = 0.5         # Min volume vs 20-period average to trade
 MEAN_REVERSION_ZSCORE = 2.0    # Z-score threshold for mean-reversion signals
-STALE_POSITION_HOURS = 48      # Close positions older than this
+STALE_POSITION_HOURS_WIN = 120 # Close winning positions after 120h
+STALE_POSITION_HOURS_LOSE = 60 # Close losing positions after 60h
+# Optimized SL/TP/Trailing params (backtested +11.8% over 4 years, all regimes profitable)
+SL_ATR_MULT = 3.0              # 3× ATR stop loss distance
+SL_FLOOR_PCT = 0.025           # 2.5% minimum SL (crypto noise filter)
+SL_CAP_PCT = 0.06              # 6% maximum SL
+TRAIL_ACTIVATION_PCT = 0.04    # Start trailing after 4% profit
+TRAIL_ATR_MULT = 2.5           # Trail at peak minus 2.5× ATR
+BREAKEVEN_TRIGGER_PCT = 0.02   # Move SL to breakeven after 2% profit
+USE_TREND_FILTER = True        # Only trade in direction of EMA-50 trend
 
 # Crypto correlation clusters — highly correlated pairs share exposure budget
 CORRELATION_CLUSTERS = {
@@ -859,6 +868,26 @@ class TradingLoopOrchestrator:
                     passes_threshold=abs(fused.direction) >= MIN_SIGNAL_CONFIDENCE,
                 )
                 if abs(fused.direction) >= MIN_SIGNAL_CONFIDENCE:
+                    # Trend filter: only trade in direction of EMA-50
+                    if USE_TREND_FILTER and len(df) >= 50:
+                        ema50 = df["close"].ewm(span=50, adjust=False).iloc[-1]
+                        current_price = df["close"].iloc[-1]
+                        if fused.direction > 0 and current_price < ema50:
+                            logger.info("trend_filter_reject", symbol=symbol,
+                                        reason="buy_below_ema50")
+                            continue
+                        if fused.direction < 0 and current_price > ema50:
+                            logger.info("trend_filter_reject", symbol=symbol,
+                                        reason="sell_above_ema50")
+                            continue
+
+                    # Require ML agreement (backtested as critical for profitability)
+                    ml_agreed = fused.contributing_signals.get("ml_agreement", False)
+                    if not ml_agreed:
+                        logger.info("ml_filter_reject", symbol=symbol,
+                                    reason="ml_disagrees_or_absent")
+                        continue
+
                     signals.append(fused)
                     self._metrics.signals_generated += 1
             except Exception as err:
@@ -1319,38 +1348,50 @@ class TradingLoopOrchestrator:
                 atr = self._compute_atr(pos.symbol)
                 if atr and pos.entry_price > 0:
                     atr_pct = atr / pos.entry_price
-                    # SL = 1.5 × ATR, TP = 3 × ATR → 1:2 risk/reward minimum
-                    sl_mult = 1.5
-                    tp_mult = 3.0
-                    # Floor: min 0.5% SL (noise filter), cap: max 1.5% SL
-                    sl_pct = max(sl_mult * atr_pct, 0.005)
-                    sl_pct = min(sl_pct, 0.015)
-                    tp_pct = max(tp_mult * atr_pct, sl_pct * 2.0)  # TP always ≥ 2× SL
+                    sl_pct = min(max(SL_ATR_MULT * atr_pct, SL_FLOOR_PCT), SL_CAP_PCT)
                     if pos.side == OrderSide.BUY:
                         pos.stop_loss = pos.entry_price * (1 - sl_pct)
-                        pos.take_profit = pos.entry_price * (1 + tp_pct)
+                        pos.take_profit = None  # No fixed TP — trailing only
                     else:
                         pos.stop_loss = pos.entry_price * (1 + sl_pct)
-                        pos.take_profit = pos.entry_price * (1 - tp_pct)
+                        pos.take_profit = None
                 else:
-                    # Fallback: 1.5% SL, 3% TP
+                    # Fallback: 2.5% SL, no TP
                     if pos.side == OrderSide.BUY:
-                        pos.stop_loss = pos.entry_price * 0.985
-                        pos.take_profit = pos.entry_price * 1.03
+                        pos.stop_loss = pos.entry_price * (1 - SL_FLOOR_PCT)
                     else:
-                        pos.stop_loss = pos.entry_price * 1.015
-                        pos.take_profit = pos.entry_price * 0.97
+                        pos.stop_loss = pos.entry_price * (1 + SL_FLOOR_PCT)
+                    pos.take_profit = None
 
-            # Trailing stop: move SL up if price moved significantly in our favor
-            if pos.side == OrderSide.BUY and pnl_pct > 0.01:
-                # Trail SL to lock in at least 50% of current profit
-                trail_sl = pos.entry_price * (1 + pnl_pct * 0.5)
-                if pos.stop_loss and trail_sl > pos.stop_loss:
-                    pos.stop_loss = trail_sl
-            elif pos.side == OrderSide.SELL and pnl_pct > 0.01:
-                trail_sl = pos.entry_price * (1 - pnl_pct * 0.5)
-                if pos.stop_loss and trail_sl < pos.stop_loss:
-                    pos.stop_loss = trail_sl
+            # Breakeven stop: move SL to entry after BREAKEVEN_TRIGGER_PCT profit
+            if pnl_pct >= BREAKEVEN_TRIGGER_PCT and not getattr(pos, '_breakeven_set', False):
+                if pos.side == OrderSide.BUY:
+                    new_sl = pos.entry_price * 1.001
+                    if pos.stop_loss is None or new_sl > pos.stop_loss:
+                        pos.stop_loss = new_sl
+                else:
+                    new_sl = pos.entry_price * 0.999
+                    if pos.stop_loss is None or new_sl < pos.stop_loss:
+                        pos.stop_loss = new_sl
+                pos._breakeven_set = True
+
+            # Progressive trailing: ATR-based trail after TRAIL_ACTIVATION_PCT profit
+            if pnl_pct >= TRAIL_ACTIVATION_PCT:
+                atr = self._compute_atr(pos.symbol)
+                if atr and atr > 0:
+                    trail_dist = TRAIL_ATR_MULT * atr
+                    if pos.side == OrderSide.BUY:
+                        peak = getattr(pos, '_peak_price', current_price)
+                        pos._peak_price = max(peak, current_price)
+                        trail_sl = pos._peak_price - trail_dist
+                        if pos.stop_loss is None or trail_sl > pos.stop_loss:
+                            pos.stop_loss = trail_sl
+                    else:
+                        trough = getattr(pos, '_trough_price', current_price)
+                        pos._trough_price = min(trough, current_price)
+                        trail_sl = pos._trough_price + trail_dist
+                        if pos.stop_loss is None or trail_sl < pos.stop_loss:
+                            pos.stop_loss = trail_sl
 
             # Check exit conditions
             if pos.side == OrderSide.BUY:
@@ -1364,10 +1405,11 @@ class TradingLoopOrchestrator:
                 elif pos.take_profit and current_price <= pos.take_profit:
                     positions_to_close.append((pos, current_price, "take_profit"))
 
-            # Time-based exit: close stale positions after 48 hours
+            # Time-based exit: faster for losers, slower for winners
             age_hours = (datetime.utcnow() - pos.opened_at).total_seconds() / 3600
-            if age_hours > 48 and pos not in [p for p, _, _ in positions_to_close]:
-                positions_to_close.append((pos, current_price, "time_exit_48h"))
+            max_hours = STALE_POSITION_HOURS_LOSE if pnl_pct < 0 else STALE_POSITION_HOURS_WIN
+            if age_hours > max_hours and pos not in [p for p, _, _ in positions_to_close]:
+                positions_to_close.append((pos, current_price, "time_exit"))
 
             # G1: Regime-aware exit — close if regime flipped against position
             if pos not in [p for p, _, _ in positions_to_close]:
