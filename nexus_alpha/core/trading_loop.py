@@ -268,6 +268,9 @@ class TradingLoopOrchestrator:
 
     def _load_portfolio(self) -> None:
         """Load portfolio state from disk on startup."""
+        # Clean orphaned open trades in DB that don't match actual portfolio positions
+        self._cleanup_orphaned_trades()
+
         if not self._portfolio_file.exists():
             logger.info("no_saved_portfolio", msg="Starting with fresh portfolio")
             return
@@ -299,6 +302,24 @@ class TradingLoopOrchestrator:
             )
         except Exception as err:
             logger.warning("portfolio_load_failed", error=repr(err))
+
+    def _cleanup_orphaned_trades(self) -> None:
+        """Mark stale open trades as 'orphaned' so they don't pollute learning data."""
+        try:
+            open_trades = self._trade_logger.get_open_trades()
+            if not open_trades:
+                return
+            for t in open_trades:
+                self._trade_logger.log_trade_close(
+                    trade_id=t["trade_id"],
+                    exit_price=t.get("entry_price", 0),
+                    realized_pnl=0.0,
+                    reward=0.0,
+                    exit_context='{"exit_reason": "orphaned_on_restart"}',
+                )
+            logger.info("orphaned_trades_cleaned", count=len(open_trades))
+        except Exception as err:
+            logger.warning("orphan_cleanup_failed", error=repr(err))
 
     # ── NAV recalculation ─────────────────────────────────────────────────
 
@@ -417,17 +438,19 @@ class TradingLoopOrchestrator:
     # ── E1: Volume confirmation ───────────────────────────────────────────
 
     def _volume_confirms(self, symbol: str) -> bool:
-        """Check that recent volume is above average — avoid trading into thin liquidity."""
+        """Check that recent volume is above average — avoid trading into thin liquidity.
+        Uses 5-candle rolling avg (not single candle) to avoid being fooled by
+        incomplete current candle in tick-aggregated data."""
         df = self._build_feature_dataframe(symbol)
         if df is None or len(df) < 25:
             return True  # Can't check, allow
         try:
             vol = pd.to_numeric(df["volume"], errors="coerce")
-            avg_20 = vol.rolling(20).mean().iloc[-1]
-            current = vol.iloc[-1]
+            avg_20 = vol.iloc[-25:-5].mean()  # Use candles 25→5 ago as baseline
+            recent_5 = vol.iloc[-5:].mean()   # Last 5 candles (smooths out incomplete candle)
             if avg_20 <= 0:
                 return True
-            return (current / avg_20) >= MIN_VOLUME_RATIO
+            return (recent_5 / avg_20) >= MIN_VOLUME_RATIO
         except Exception:
             return True
 
@@ -898,9 +921,12 @@ class TradingLoopOrchestrator:
                 return 0.0
 
         cb_multiplier = self._circuit_breaker.position_size_multiplier
+
+        # Use actual win/loss stats from trade journal if available
+        avg_wl_ratio = self._get_win_loss_ratio()
         kelly = kelly_position_size(
             win_rate=0.5 + confidence * 0.15,
-            avg_win_loss_ratio=0.02 / 0.015,  # ~1.33 win/loss ratio
+            avg_win_loss_ratio=avg_wl_ratio,
         )
         raw_size_pct = min(kelly * cb_multiplier, self._config.risk.max_single_position_pct)
         if verdict and verdict.synthesis_recommendation == "reduce_size":
@@ -911,6 +937,36 @@ class TradingLoopOrchestrator:
 
         position_usd = nav * raw_size_pct
         return max(0.0, position_usd)
+
+    def _get_win_loss_ratio(self) -> float:
+        """Compute actual avg_win/avg_loss from recent trade journal. Falls back to 1.5."""
+        try:
+            conn = self._trade_logger._conn()
+            # Only use real trades (non-zero PnL) from last 7 days
+            recent_count = conn.execute(
+                "SELECT COUNT(*) FROM trades WHERE status='closed' AND realized_pnl != 0 "
+                "AND exit_timestamp > datetime('now', '-7 days')"
+            ).fetchone()[0]
+
+            if recent_count < 10:
+                return 1.5  # Need enough data for statistical relevance
+
+            winners = conn.execute(
+                "SELECT AVG(realized_pnl) FROM trades WHERE status='closed' AND realized_pnl > 0 "
+                "AND exit_timestamp > datetime('now', '-7 days')"
+            ).fetchone()
+            losers = conn.execute(
+                "SELECT AVG(ABS(realized_pnl)) FROM trades WHERE status='closed' AND realized_pnl < 0 "
+                "AND exit_timestamp > datetime('now', '-7 days')"
+            ).fetchone()
+            avg_win = winners[0] if winners and winners[0] else None
+            avg_loss = losers[0] if losers and losers[0] else None
+            if avg_win and avg_loss and avg_loss > 0:
+                ratio = avg_win / avg_loss
+                return max(0.5, min(ratio, 5.0))
+        except Exception:
+            pass
+        return 1.5  # Conservative default
 
     # ── Trade execution ───────────────────────────────────────────────────
 
@@ -1260,30 +1316,35 @@ class TradingLoopOrchestrator:
                 atr = self._compute_atr(pos.symbol)
                 if atr and pos.entry_price > 0:
                     atr_pct = atr / pos.entry_price
-                    # SL = 2 × ATR below entry, TP = 3 × ATR above entry
+                    # SL = 1.5 × ATR, TP = 3 × ATR → 1:2 risk/reward minimum
+                    sl_mult = 1.5
+                    tp_mult = 3.0
+                    # Cap max loss at 1.5% of entry regardless of ATR
+                    sl_pct = min(sl_mult * atr_pct, 0.015)
+                    tp_pct = max(tp_mult * atr_pct, sl_pct * 2.0)  # TP always ≥ 2× SL
                     if pos.side == OrderSide.BUY:
-                        pos.stop_loss = pos.entry_price * (1 - 2.0 * atr_pct)
-                        pos.take_profit = pos.entry_price * (1 + 3.0 * atr_pct)
+                        pos.stop_loss = pos.entry_price * (1 - sl_pct)
+                        pos.take_profit = pos.entry_price * (1 + tp_pct)
                     else:
-                        pos.stop_loss = pos.entry_price * (1 + 2.0 * atr_pct)
-                        pos.take_profit = pos.entry_price * (1 - 3.0 * atr_pct)
+                        pos.stop_loss = pos.entry_price * (1 + sl_pct)
+                        pos.take_profit = pos.entry_price * (1 - tp_pct)
                 else:
-                    # Fallback: 2% SL, 3% TP
+                    # Fallback: 1.5% SL, 3% TP
                     if pos.side == OrderSide.BUY:
-                        pos.stop_loss = pos.entry_price * 0.98
+                        pos.stop_loss = pos.entry_price * 0.985
                         pos.take_profit = pos.entry_price * 1.03
                     else:
-                        pos.stop_loss = pos.entry_price * 1.02
+                        pos.stop_loss = pos.entry_price * 1.015
                         pos.take_profit = pos.entry_price * 0.97
 
             # Trailing stop: move SL up if price moved significantly in our favor
-            if pos.side == OrderSide.BUY and pnl_pct > 0.015:
-                # Trail SL to lock in at least 40% of current profit
-                trail_sl = pos.entry_price * (1 + pnl_pct * 0.4)
+            if pos.side == OrderSide.BUY and pnl_pct > 0.01:
+                # Trail SL to lock in at least 50% of current profit
+                trail_sl = pos.entry_price * (1 + pnl_pct * 0.5)
                 if pos.stop_loss and trail_sl > pos.stop_loss:
                     pos.stop_loss = trail_sl
-            elif pos.side == OrderSide.SELL and pnl_pct > 0.015:
-                trail_sl = pos.entry_price * (1 - pnl_pct * 0.4)
+            elif pos.side == OrderSide.SELL and pnl_pct > 0.01:
+                trail_sl = pos.entry_price * (1 - pnl_pct * 0.5)
                 if pos.stop_loss and trail_sl < pos.stop_loss:
                     pos.stop_loss = trail_sl
 

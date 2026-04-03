@@ -261,6 +261,38 @@ def build_features(df: pd.DataFrame, lookback: int = 200) -> pd.DataFrame:
             streak.iloc[i] = streak.iloc[i - 1] + direction.iloc[i]
     feat["streak"] = streak.clip(-10, 10) / 10
 
+    # ── RSI divergence (price vs momentum) ──
+    rsi_14 = feat.get("rsi_14")
+    if rsi_14 is not None:
+        # Price making new high but RSI isn't (bearish divergence) and vice versa
+        price_high_5 = close.rolling(5).max()
+        price_high_20 = close.rolling(20).max()
+        rsi_raw = rsi_14 + 0.5  # un-center
+        rsi_high_5 = rsi_raw.rolling(5).max()
+        rsi_high_20 = rsi_raw.rolling(20).max()
+        feat["rsi_divergence"] = (
+            (close / price_high_20.replace(0, np.nan)) -
+            (rsi_raw / rsi_high_20.replace(0, np.nan))
+        ).clip(-1, 1)
+
+    # ── Acceleration (rate of change of momentum) ──
+    mom_12 = close.pct_change(12)
+    feat["momentum_accel"] = (mom_12 - mom_12.shift(6)).clip(-0.1, 0.1) * 10
+
+    # ── Support/resistance proximity ──
+    pivot = (high.shift(1) + low.shift(1) + close.shift(1)) / 3
+    r1 = 2 * pivot - low.shift(1)
+    s1 = 2 * pivot - high.shift(1)
+    feat["dist_to_resistance"] = ((r1 - close) / close.replace(0, np.nan)).clip(-0.05, 0.05) * 20
+    feat["dist_to_support"] = ((close - s1) / close.replace(0, np.nan)).clip(-0.05, 0.05) * 20
+
+    # ── Volume profile (relative to range position) ──
+    feat["vol_at_high"] = volume * (close >= high.rolling(10).max().shift(1)).astype(float)
+    feat["vol_at_low"] = volume * (close <= low.rolling(10).min().shift(1)).astype(float)
+    vol_avg = volume.rolling(20).mean().replace(0, np.nan)
+    feat["vol_at_high"] = (feat["vol_at_high"] / vol_avg).clip(0, 5) / 5
+    feat["vol_at_low"] = (feat["vol_at_low"] / vol_avg).clip(0, 5) / 5
+
     # ── Time features (cyclical) ──
     if "timestamp" in df.columns:
         ts = pd.to_datetime(df["timestamp"])

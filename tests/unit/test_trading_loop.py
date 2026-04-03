@@ -95,6 +95,8 @@ class TestPositionSizing:
             circuit_breaker=CircuitBreakerSystem(),
             alerts=MagicMock(),
         )
+        # Isolate from real trade DB — use default ratio
+        loop._get_win_loss_ratio = lambda: 1.5
         signal = _make_fused_signal(confidence=0.7)
         size = loop._compute_position_size(signal, None, 65000.0)
         assert size > 0
@@ -142,6 +144,7 @@ class TestPositionSizing:
             circuit_breaker=CircuitBreakerSystem(),
             alerts=MagicMock(),
         )
+        loop._get_win_loss_ratio = lambda: 1.5
         signal = _make_fused_signal(confidence=0.7)
         base_size = loop._compute_position_size(signal, None, 65000.0)
 
