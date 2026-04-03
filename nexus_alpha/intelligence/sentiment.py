@@ -12,8 +12,13 @@ It outperforms generic LLMs on pure sentiment classification at 1/100th the cost
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+# Must be set before transformers is imported anywhere — prevents HuggingFace
+# tokenizers from spawning subprocesses that crash when stdin is closed (daemon mode).
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 from nexus_alpha.logging import get_logger
 
@@ -83,11 +88,6 @@ class FinBERTAnalyzer:
         if self._loaded:
             return
         try:
-            import os
-            # Prevent HuggingFace tokenizers from spawning subprocesses that
-            # crash on macOS when stdin/stdout are closed (nohup / /dev/null).
-            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-
             from transformers import (  # type: ignore[import]
                 AutoModelForSequenceClassification,
                 AutoTokenizer,

@@ -19,6 +19,10 @@ import time
 import uuid
 from typing import Any
 
+# Set before any HuggingFace/transformers imports to prevent tokenizer subprocesses
+# crashing when stdin is closed in daemon/nohup mode (macOS bad-fd issue).
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import pandas as pd
 from urllib.parse import urlparse
 
