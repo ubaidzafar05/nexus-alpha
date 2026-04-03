@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nexus-alpha"
 version = "3.0.0"
-description = "NEXUS-ALPHA: Self-Evolving Autonomous Trading Intelligence"
+description = "Self-evolving crypto trading scaffold with modular signal, risk, execution, and world-model layers."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Proprietary"}

@@ -1,34 +1,29 @@
 # NEXUS-ALPHA
 
-NEXUS-ALPHA is a Python trading research and execution scaffold for multi-agent crypto trading.
+Self-evolving autonomous trading intelligence scaffold for crypto research and execution.
 
-## Current State
+## Architecture
+- CLI entrypoint drives run, paper, backtest, health, and adversarial modes.
+- Signal, regime, causal, world-model, risk, execution, and portfolio modules are separated into distinct layers.
+- FastAPI, websockets, Kafka, and Redis support service-style execution and streaming data flows.
+- Reinforcement learning and evolutionary components sit alongside classical ML and causal validation.
+- Infrastructure manifests support Docker and Kubernetes-based deployment.
 
-This repository contains:
+## Problem + Solution
+### Problem
+Trading systems become brittle when signals, risk, execution, and research logic are tangled together or hidden inside opaque scripts.
 
-- configuration models for exchanges, infrastructure, and risk
-- a CLI entrypoint for run, paper, backtest, health, and adversarial modes
-- execution, risk, signal, portfolio, and intelligence modules
-- Docker and infrastructure manifests for local services
+### Solution
+Built a modular scaffold that separates decision layers, supports offline validation through backtests and health checks, and makes it easier to reason about trading behavior before capital is exposed.
 
-This codebase is not production-ready as-is. Several subsystems are scaffolds or partially wired implementations intended for further integration and validation.
+## Tech Stack
+Python, FastAPI, PyTorch, scikit-learn, Stable Baselines3, Gymnasium, DoWhy, DEAP, CCXT, Kafka, Redis, SQLAlchemy, NumPy, Pandas, SciPy, Statsmodels, XGBoost, LightGBM, Optuna, MLflow, Prometheus, OpenTelemetry, Pydantic.
 
-## Quick Start
+## Status
+Research scaffold. Several subsystems are intentionally incomplete and should be validated before any production use.
 
+## Local Run
 1. Copy `.env.example` to `.env`.
-2. Fill in required credentials and service URLs.
-3. Activate the managed environment.
-4. Run the CLI with `nexus --help`.
-
-## Verification
-
-The package source under `nexus_alpha/` compiles with Python 3.11 in the managed environment.
-
-## Production Intake
-
-1. Copy `config/production_inputs.example.yaml` to `config/production_inputs.yaml`.
-2. Fill required ownership/policy/infrastructure fields.
-3. Run preflight:
-   - `python scripts/validate_production_readiness.py`
-   - `python scripts/validate_production_readiness.py --check-network`
-4. Follow `docs/runbooks/production_readiness.md`.
+2. Install dependencies from `pyproject.toml`.
+3. Run `nexus --help` to inspect the available modes.
+4. Use `python scripts/validate_production_readiness.py` before any live rollout.
