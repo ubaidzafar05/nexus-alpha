@@ -336,9 +336,12 @@ class TradingLoopOrchestrator:
             total_unrealized += pos.unrealized_pnl
 
         self._portfolio.total_unrealized_pnl = total_unrealized
-        self._portfolio.nav = self._portfolio.cash + sum(
-            p.quantity * p.current_price for p in self._portfolio.positions
+        # Longs: we hold the asset → add value; Shorts: we owe the asset → subtract value
+        position_value = sum(
+            p.quantity * p.current_price * (1 if p.side == OrderSide.BUY else -1)
+            for p in self._portfolio.positions
         )
+        self._portfolio.nav = self._portfolio.cash + position_value
 
     # ── Position guards ───────────────────────────────────────────────────
 
@@ -1319,8 +1322,9 @@ class TradingLoopOrchestrator:
                     # SL = 1.5 × ATR, TP = 3 × ATR → 1:2 risk/reward minimum
                     sl_mult = 1.5
                     tp_mult = 3.0
-                    # Cap max loss at 1.5% of entry regardless of ATR
-                    sl_pct = min(sl_mult * atr_pct, 0.015)
+                    # Floor: min 0.5% SL (noise filter), cap: max 1.5% SL
+                    sl_pct = max(sl_mult * atr_pct, 0.005)
+                    sl_pct = min(sl_pct, 0.015)
                     tp_pct = max(tp_mult * atr_pct, sl_pct * 2.0)  # TP always ≥ 2× SL
                     if pos.side == OrderSide.BUY:
                         pos.stop_loss = pos.entry_price * (1 - sl_pct)
