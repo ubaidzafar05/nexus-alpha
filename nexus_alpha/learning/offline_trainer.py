@@ -125,10 +125,19 @@ class LightweightPredictor:
             "val_direction_accuracy": round(val_dir_acc, 4),
             "test_direction_accuracy": round(test_dir_acc, 4),
             "top_features": [(n, round(v, 4)) for n, v in importances[:10]],
+            "all_importances": [(n, round(v, 6)) for n, v in importances],
             "training_time_seconds": round(elapsed, 1),
         }
 
-        logger.info("training_complete", **self.training_stats)
+        # G4: Log feature importances to SQLite for trend analysis
+        try:
+            from nexus_alpha.learning.trade_logger import TradeLogger
+            tl = TradeLogger()
+            tl.log_feature_importances(symbol, timeframe, importances)
+        except Exception:
+            pass  # Non-critical
+
+        logger.info("training_complete", **{k: v for k, v in self.training_stats.items() if k != "all_importances"})
         return self.training_stats
 
     def predict(self, features: np.ndarray) -> dict:

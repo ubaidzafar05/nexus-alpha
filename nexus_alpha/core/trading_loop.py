@@ -33,6 +33,7 @@ from nexus_alpha.learning.historical_data import build_features
 from nexus_alpha.learning.offline_trainer import LightweightPredictor, OnlineLearner
 from nexus_alpha.learning.trade_logger import TradeLogger, TradeRecord
 from nexus_alpha.logging import get_logger
+from nexus_alpha.core.regime_oracle import RegimeOracle
 from nexus_alpha.portfolio.optimizer import (
     HierarchicalRiskParityOptimizer,
     kelly_position_size,
@@ -130,6 +131,7 @@ class TradingLoopOrchestrator:
         portfolio: Portfolio | None = None,
         cycle_interval_s: float = 60.0,
         persist_portfolio: bool = True,
+        regime_oracle: RegimeOracle | None = None,
     ) -> None:
         self._config = config
         self._signal_engine = signal_engine
@@ -158,6 +160,10 @@ class TradingLoopOrchestrator:
         self._ml_predictors: dict[str, LightweightPredictor] = {}
         self._online_learner = OnlineLearner(retrain_interval_hours=6)
         self._init_ml_models()
+
+        # G2: Regime oracle with persistence
+        self._regime_oracle = regime_oracle or RegimeOracle(n_regimes=5, lookback_window=200)
+        self._regime_oracle.load_checkpoint()
 
         # State
         self._running = False
@@ -228,7 +234,7 @@ class TradingLoopOrchestrator:
     # ── Portfolio persistence ─────────────────────────────────────────────
 
     def _save_portfolio(self) -> None:
-        """Save portfolio state to disk so it survives restarts."""
+        """Save portfolio state and regime oracle to disk so they survive restarts."""
         if not self._persist_portfolio:
             return
         try:
@@ -255,6 +261,8 @@ class TradingLoopOrchestrator:
                 "saved_at": datetime.utcnow().isoformat(),
             }
             self._portfolio_file.write_text(_json.dumps(state, indent=2))
+            # G2: Persist regime oracle state
+            self._regime_oracle.save_checkpoint()
         except Exception as err:
             logger.warning("portfolio_save_failed", error=repr(err))
 
@@ -1396,6 +1404,20 @@ class TradingLoopOrchestrator:
 
         # 0. Recalculate NAV from live prices FIRST
         self._recalculate_nav()
+
+        # 0b. Feed BTC returns into regime oracle for changepoint detection
+        btc_df = self._build_feature_dataframe("BTCUSDT")
+        if btc_df is not None and len(btc_df) >= 2:
+            btc_close = pd.to_numeric(btc_df["close"], errors="coerce")
+            btc_return = float(btc_close.pct_change().iloc[-1])
+            if not np.isnan(btc_return):
+                oracle_state = self._regime_oracle.update(np.array([btc_return]))
+                if oracle_state.changepoint_probability > 0.3:
+                    logger.info(
+                        "regime_changepoint_detected",
+                        prob=f"{oracle_state.changepoint_probability:.3f}",
+                        regime=oracle_state.regime.value,
+                    )
 
         # 1. Update circuit breaker with REAL values
         from nexus_alpha.risk.circuit_breaker import RiskSnapshot

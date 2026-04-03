@@ -162,6 +162,7 @@ class TestE2EPaperTrading:
         alerts = MagicMock()
         alerts.trade_opened = AsyncMock()
         alerts.risk_alert = AsyncMock()
+        alerts.circuit_breaker_triggered = AsyncMock()
 
         loop = TradingLoopOrchestrator(
             config=config,
@@ -199,6 +200,7 @@ class TestE2EPaperTrading:
         alerts = MagicMock()
         alerts.trade_opened = AsyncMock()
         alerts.risk_alert = AsyncMock()
+        alerts.circuit_breaker_triggered = AsyncMock()
 
         loop = TradingLoopOrchestrator(
             config=config,

@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 from scipy import stats
@@ -286,3 +287,75 @@ class RegimeOracle:
     @property
     def changepoint_probability(self) -> float:
         return self._changepoint_prob
+
+    # ── G2: Checkpoint persistence ────────────────────────────────────────
+
+    def save_checkpoint(self, path: Path | None = None) -> Path:
+        """Persist regime oracle state so it survives restarts."""
+        import pickle
+
+        path = path or Path("data/checkpoints/regime_oracle.pkl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        state = {
+            "returns_buffer": list(self._returns_buffer),
+            "current_regime": self._current_regime.value,
+            "changepoint_prob": self._changepoint_prob,
+            "update_count": self._update_count,
+            "last_hmm_fit": self._last_hmm_fit,
+            # BOCD state
+            "bocd_log_run_lengths": self.bocd._log_run_lengths,
+            "bocd_mu": self.bocd._mu,
+            "bocd_kappa": self.bocd._kappa,
+            "bocd_alpha": self.bocd._alpha,
+            "bocd_beta": self.bocd._beta,
+            # HMM state
+            "hmm_means": self.hmm.means,
+            "hmm_stds": self.hmm.stds,
+            "hmm_transition_matrix": self.hmm.transition_matrix,
+        }
+        with open(path, "wb") as f:
+            pickle.dump(state, f)
+        logger.info("regime_oracle_saved", path=str(path), regime=self._current_regime.value)
+        return path
+
+    def load_checkpoint(self, path: Path | None = None) -> bool:
+        """Restore regime oracle state from checkpoint. Returns True if loaded."""
+        import pickle
+
+        path = path or Path("data/checkpoints/regime_oracle.pkl")
+        if not path.exists():
+            return False
+        try:
+            with open(path, "rb") as f:
+                state = pickle.load(f)
+
+            self._returns_buffer = deque(state["returns_buffer"], maxlen=self.lookback_window)
+            self._current_regime = MarketRegime(state["current_regime"])
+            self._changepoint_prob = state["changepoint_prob"]
+            self._update_count = state["update_count"]
+            self._last_hmm_fit = state["last_hmm_fit"]
+
+            # Restore BOCD
+            self.bocd._log_run_lengths = state["bocd_log_run_lengths"]
+            self.bocd._mu = state["bocd_mu"]
+            self.bocd._kappa = state["bocd_kappa"]
+            self.bocd._alpha = state["bocd_alpha"]
+            self.bocd._beta = state["bocd_beta"]
+
+            # Restore HMM
+            self.hmm.means = state["hmm_means"]
+            self.hmm.stds = state["hmm_stds"]
+            self.hmm.transition_matrix = state["hmm_transition_matrix"]
+
+            logger.info(
+                "regime_oracle_restored",
+                path=str(path),
+                regime=self._current_regime.value,
+                buffer_size=len(self._returns_buffer),
+                updates=self._update_count,
+            )
+            return True
+        except Exception as e:
+            logger.warning("regime_oracle_load_failed", error=str(e))
+            return False

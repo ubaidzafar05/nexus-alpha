@@ -553,6 +553,7 @@ async def _run_system(config: NexusConfig) -> None:
         circuit_breaker=circuit_breaker,
         alerts=alerts,
         cycle_interval_s=60.0,
+        regime_oracle=_regime_oracle,
     )
 
     # ── Intelligence network ──────────────────────────────────────────────────

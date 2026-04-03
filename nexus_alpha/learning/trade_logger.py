@@ -324,3 +324,85 @@ class TradeLogger:
                 "INSERT INTO learning_metrics (metric_name, metric_value, details) VALUES (?, ?, ?)",
                 (name, value, details),
             )
+
+    # ── G4: Feature importance tracking ───────────────────────────────────
+
+    def log_feature_importances(
+        self, symbol: str, timeframe: str, importances: list[tuple[str, float]]
+    ) -> None:
+        """Log feature importances from a training run for trend analysis."""
+        with self._conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS feature_importances (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    feature_name TEXT NOT NULL,
+                    importance REAL NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_fi_symbol
+                ON feature_importances(symbol, timeframe)
+            """)
+            for feat_name, imp_val in importances:
+                conn.execute(
+                    "INSERT INTO feature_importances (symbol, timeframe, feature_name, importance) "
+                    "VALUES (?, ?, ?, ?)",
+                    (symbol, timeframe, feat_name, imp_val),
+                )
+        logger.info(
+            "feature_importances_logged",
+            symbol=symbol,
+            timeframe=timeframe,
+            top_3=[f"{n}={v:.4f}" for n, v in importances[:3]],
+        )
+
+    def get_feature_importance_trends(self, n_latest: int = 3) -> dict[str, float]:
+        """
+        Aggregate feature importances across latest N training runs.
+        Returns {feature_name: avg_importance} sorted desc.
+        Useful for pruning low-value features.
+        """
+        with self._conn() as conn:
+            # Check if table exists
+            table_check = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='feature_importances'"
+            ).fetchone()
+            if not table_check:
+                return {}
+
+            # Get the latest N distinct (symbol, timeframe, timestamp) combos
+            runs = conn.execute("""
+                SELECT DISTINCT symbol, timeframe, timestamp
+                FROM feature_importances
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (n_latest * 5,)).fetchall()  # 5 symbols × n_latest
+
+            if not runs:
+                return {}
+
+            # Get all importances from these runs
+            timestamps = [r[2] for r in runs]
+            placeholders = ",".join(["?"] * len(timestamps))
+            rows = conn.execute(
+                f"SELECT feature_name, importance FROM feature_importances "
+                f"WHERE timestamp IN ({placeholders})",
+                timestamps,
+            ).fetchall()
+
+        # Aggregate
+        from collections import defaultdict
+        sums: dict[str, list[float]] = defaultdict(list)
+        for name, imp in rows:
+            sums[name].append(imp)
+
+        averages = {name: sum(vals) / len(vals) for name, vals in sums.items()}
+        return dict(sorted(averages.items(), key=lambda x: x[1], reverse=True))
+
+    def get_low_value_features(self, threshold: float = 0.005) -> list[str]:
+        """Return features with average importance below threshold (pruning candidates)."""
+        trends = self.get_feature_importance_trends()
+        return [name for name, imp in trends.items() if imp < threshold]
