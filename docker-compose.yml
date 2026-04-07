@@ -47,7 +47,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_LOG_RETENTION_HOURS: 168
-      KAFKA_HEAP_OPTS: "-Xmx1G -Xms512M"
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms256M"
       CLUSTER_ID: "L8guorN9QMuh58127ULtPg"
     volumes:
       - kafka_data:/var/lib/kafka/data
@@ -220,6 +220,21 @@ services:
       start_period: 120s
       retries: 3
     restart: unless-stopped
+
+watchdog:
+    image: python:3.11-slim
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./:/app:ro
+    command: ["python", "infra/self_healing/watchdog.py"]
+    environment:
+      - ENV_FILE=.env
+    depends_on:
+      - timescaledb
+      - redis
+      - kafka
+      - ollama
 
 volumes:
   timescaledb_data:
