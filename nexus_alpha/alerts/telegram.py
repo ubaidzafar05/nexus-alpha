@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import random
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -142,10 +144,13 @@ class TelegramAlerts:
             return success
 
     async def _do_send(self, text: str) -> bool:
-        max_attempts = 3
+        # Exponential backoff with jitter for transport-level failures
+        max_attempts = 5
+        base_backoff = 0.5
         for attempt in range(max_attempts):
             try:
                 client = self._get_client()
+                # Per-request timeout slightly larger than client default to allow retries
                 resp = await client.post(
                     f"{TELEGRAM_API}/bot{self._token}/sendMessage",
                     json={
@@ -153,17 +158,28 @@ class TelegramAlerts:
                         "text": text,
                         "parse_mode": "Markdown",
                     },
+                    timeout=15.0,
                 )
                 resp.raise_for_status()
                 return True
             except httpx.HTTPStatusError as err:
+                # Permanent failure (4xx) — don't retry
                 body = err.response.text[:300] if err.response is not None else ""
-                logger.warning("telegram_send_failed", error=repr(err), status_code=err.response.status_code if err.response else None, response_body=body)
+                logger.warning(
+                    "telegram_send_failed",
+                    error=repr(err),
+                    status_code=err.response.status_code if err.response else None,
+                    response_body=body,
+                )
                 return False
-            except httpx.TransportError as err:
+            except (httpx.RequestError, httpx.TransportError) as err:
+                # Transient network error — retry with backoff
                 await self._reset_client()
                 if attempt < max_attempts - 1:
-                    await asyncio.sleep(0.5 * (attempt + 1))
+                    jitter = random.uniform(0, base_backoff)
+                    sleep_for = base_backoff * (2 ** attempt) + jitter
+                    logger.info("telegram_send_retry", attempt=attempt + 1, sleep_for=f"{sleep_for:.2f}s", error=repr(err))
+                    await asyncio.sleep(sleep_for)
                     continue
                 logger.warning("telegram_send_failed", error=repr(err))
                 return False
@@ -174,10 +190,32 @@ class TelegramAlerts:
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=10.0,
-                limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
-            )
+            # Respect environment proxy settings (HTTP_PROXY / HTTPS_PROXY)
+            proxies = None
+            https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+            http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+            if https_proxy or http_proxy:
+                proxies = {}
+                if https_proxy:
+                    proxies["https"] = https_proxy
+                if http_proxy:
+                    proxies["http"] = http_proxy
+
+            # Use a slightly higher timeout and ensure we close idle connections more aggressively
+            try:
+                self._client = httpx.AsyncClient(
+                    timeout=15.0,
+                    limits=httpx.Limits(max_connections=10, max_keepalive_connections=2),
+                    proxies=proxies,
+                )
+            except TypeError:
+                # Older httpx versions do not accept 'proxies' in the constructor.
+                # Fall back to creating the client without proxies; httpx will pick
+                # up environment proxy variables automatically if present.
+                self._client = httpx.AsyncClient(
+                    timeout=15.0,
+                    limits=httpx.Limits(max_connections=10, max_keepalive_connections=2),
+                )
         return self._client
 
     async def _reset_client(self) -> None:
