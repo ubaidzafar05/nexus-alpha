@@ -11,7 +11,7 @@ services:
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nexus"]
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus_alpha"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -140,6 +140,7 @@ services:
   # ─── Monitoring Stack ─────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.51.0
+    restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
@@ -148,6 +149,7 @@ services:
 
   grafana:
     image: grafana/grafana:10.4.0
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
