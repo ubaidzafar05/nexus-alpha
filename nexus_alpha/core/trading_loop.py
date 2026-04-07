@@ -29,6 +29,7 @@ from nexus_alpha.agents.debate import AgentDebateProtocol, DebateContext
 from nexus_alpha.alerts.telegram import TelegramAlerts
 from nexus_alpha.config import NexusConfig, TradingMode
 from nexus_alpha.execution.execution_engine import OrderManagementSystem
+from nexus_alpha.learning.entry_features import build_augmented_feature_vector
 from nexus_alpha.learning.historical_data import build_features
 from nexus_alpha.learning.offline_trainer import LightweightPredictor, OnlineLearner
 from nexus_alpha.learning.trade_logger import TradeLogger, TradeRecord
@@ -56,7 +57,9 @@ from nexus_alpha.types import (
 logger = get_logger(__name__)
 
 DEBATE_NAV_THRESHOLD = 0.05  # 5% of NAV triggers debate
-MIN_SIGNAL_CONFIDENCE = 0.40   # High bar — only trade strong signals (backtested optimal)
+MIN_SIGNAL_CONFIDENCE = 0.45   # Higher bar — improved full-period PF/DD in corrected backtests
+MIN_ML_CONFIDENCE = 0.20       # Minimum ML confidence to consider ML agreement valid
+
 MIN_POSITION_USD = 10.0
 MAX_OPEN_POSITIONS = 3         # Max simultaneous positions
 MAX_TOTAL_EXPOSURE_PCT = 0.50  # Max 50% of NAV in open positions
@@ -94,6 +97,8 @@ REGIME_CONFIDENCE = {
     "high_volatility": 0.6, # Be cautious in high vol
     "unknown": 0.9,
 }
+SYMBOL_LEARNING_MIN_TRADES = 5
+SYMBOL_LEARNING_CACHE_SECONDS = 300.0
 
 
 @dataclass
@@ -180,6 +185,8 @@ class TradingLoopOrchestrator:
         self._redis: Any = None
         self._last_trade_time: dict[str, float] = {}  # symbol → monotonic timestamp
         self._portfolio_file = Path("data/trade_logs/portfolio_state.json")
+        self._symbol_learning_scores: dict[str, float] = {}
+        self._symbol_learning_scores_expires_at = 0.0
 
         # Restore portfolio from disk only if persistence enabled and no explicit portfolio
         if self._persist_portfolio and not self._explicit_portfolio:
@@ -188,6 +195,58 @@ class TradingLoopOrchestrator:
     @property
     def metrics(self) -> LoopMetrics:
         return self._metrics
+
+    def _entry_signal_threshold(self) -> float:
+        paper_override = self._config.paper_min_signal_confidence
+        if self._config.trading_mode == TradingMode.PAPER and paper_override is not None:
+            return float(paper_override)
+        return MIN_SIGNAL_CONFIDENCE
+
+    def _update_symbol_learning_scores(self) -> None:
+        """Refresh cached per-symbol learning multipliers from the trade journal.
+
+        These scores are conservative modifiers (0.80–1.15) computed from past
+        trade outcomes and used to adapt entry thresholds per-symbol.
+        """
+        try:
+            now = time.time()
+            if now < self._symbol_learning_scores_expires_at and self._symbol_learning_scores:
+                return
+            scores = self._trade_logger.get_symbol_learning_scores(min_trades=SYMBOL_LEARNING_MIN_TRADES)
+            if scores:
+                self._symbol_learning_scores = scores
+            else:
+                # default to neutral multipliers
+                self._symbol_learning_scores = {}
+            self._symbol_learning_scores_expires_at = now + SYMBOL_LEARNING_CACHE_SECONDS
+            logger.debug("symbol_learning_scores_updated", scores_len=len(self._symbol_learning_scores))
+        except Exception as err:
+            logger.warning("symbol_learning_scores_update_failed", error=repr(err))
+
+    def _effective_entry_threshold(self, symbol: str) -> float:
+        """Return the entry threshold adjusted for symbol learning score and regime.
+
+        If a symbol has performed poorly (score < 1.0) the effective threshold
+        is increased to be more selective; for well-performing symbols it is
+        decreased slightly.
+        """
+        base = self._entry_signal_threshold()
+        try:
+            self._update_symbol_learning_scores()
+            score = float(self._symbol_learning_scores.get(symbol, 1.0))
+            # multiplier: lower than 1.0 -> make threshold stricter, higher -> looser
+            # map score [0.8,1.15] -> multiplier [1.2,0.9]
+            # multiplier = 1.0 + (1.0 - score) * 1.0 (simple linear mapping)
+            multiplier = float(max(0.6, min(1.4, 1.0 + (1.0 - score))))
+            return float(np.clip(base * multiplier, 0.0, 0.95))
+        except Exception:
+            return base
+
+    def _position_max_age_hours(self, pnl_pct: float) -> float:
+        paper_override = self._config.paper_max_position_age_hours
+        if self._config.trading_mode == TradingMode.PAPER and paper_override is not None:
+            return float(paper_override)
+        return STALE_POSITION_HOURS_LOSE if pnl_pct < 0 else STALE_POSITION_HOURS_WIN
 
     # ── ML model loading ──────────────────────────────────────────────────
 
@@ -224,13 +283,32 @@ class TradingLoopOrchestrator:
             if len(features) == 0:
                 return None
             last_row = features[feature_cols].iloc[-1].values.astype(np.float32)
-            return predictor.predict(last_row)
+            prediction = predictor.predict(last_row)
+
+            reward_overlay = self._online_learner.predict_reward(
+                last_row,
+                prediction.get("signal", 0.0),
+            )
+            if reward_overlay:
+                reward_score = reward_overlay["reward_prediction"]
+                scale = float(np.clip(1.0 + reward_score * 0.12, 0.35, 1.25))
+                adjusted_conf = float(np.clip(prediction["confidence"] * scale, 0.0, 1.0))
+                signal_direction = float(np.sign(prediction.get("signal", 0.0)))
+                prediction = {
+                    **prediction,
+                    "confidence": round(adjusted_conf, 4),
+                    "signal": round(signal_direction * adjusted_conf, 4) if signal_direction != 0 else 0.0,
+                    "reward_overlay": reward_score,
+                    "reward_overlay_confidence": reward_overlay["confidence"],
+                }
+
+            return prediction
         except Exception as err:
             logger.warning("ml_prediction_error", symbol=symbol, error=repr(err))
             return None
 
     def _get_feature_vector(self, symbol: str, df: pd.DataFrame) -> list[float] | None:
-        """Extract the current feature vector for trade logging."""
+        """Extract the base market feature vector used at entry time."""
         try:
             features = build_features(df)
             feature_cols = [c for c in features.columns if not c.startswith("target_")]
@@ -239,6 +317,66 @@ class TradingLoopOrchestrator:
             return features[feature_cols].iloc[-1].tolist()
         except Exception:
             return None
+
+    def _directional_persistence_24(self, df: pd.DataFrame) -> float:
+        close = pd.to_numeric(df.get("close"), errors="coerce")
+        if close is None or len(close) < 2:
+            return 0.0
+        direction = np.sign(close.pct_change().fillna(0.0))
+        return float(direction.tail(24).mean()) if len(direction) else 0.0
+
+    def _volatility_compression(self, df: pd.DataFrame) -> float:
+        close = pd.to_numeric(df.get("close"), errors="coerce")
+        if close is None or len(close) < 25:
+            return 0.0
+        returns = close.pct_change()
+        vol_short = returns.tail(24).std()
+        vol_long = returns.tail(168).std() if len(returns) >= 168 else vol_short
+        if vol_long is None or vol_long <= 0:
+            return 0.0
+        return float(np.clip(1.0 - (vol_short / vol_long), -1.0, 1.0))
+
+    def _build_learning_feature_vector(
+        self,
+        symbol: str,
+        price: float,
+        decision: TradingDecision,
+        entry_ctx: dict[str, Any],
+    ) -> list[float] | None:
+        df = self._build_feature_dataframe(symbol)
+        if df is None:
+            return None
+        base_vector = self._get_feature_vector(symbol, df)
+        if base_vector is None:
+            return None
+
+        contributing = dict(decision.signal.contributing_signals)
+        augmented, derived_context = build_augmented_feature_vector(
+            base_vector,
+            signal_confidence=decision.signal.confidence,
+            pair_quality=float(entry_ctx.get("pair_quality", 0.5) or 0.5),
+            mtf_alignment=float(entry_ctx.get("mtf_alignment", 1.0) or 1.0),
+            regime_multiplier=float(entry_ctx.get("regime_multiplier", 0.9) or 0.9),
+            ml_confidence=float(entry_ctx.get("ml_confidence", 0.0) or 0.0),
+            ml_signal=float(entry_ctx.get("ml_signal", 0.0) or 0.0),
+            contributing_signals=contributing,
+            directional_persistence_24=self._directional_persistence_24(df),
+            volatility_compression=self._volatility_compression(df),
+            entry_price=price,
+            atr=float(entry_ctx.get("atr", 0.0) or 0.0),
+            sl_atr_mult=SL_ATR_MULT,
+            sl_floor_pct=SL_FLOOR_PCT,
+            sl_cap_pct=SL_CAP_PCT,
+            breakeven_trigger_pct=BREAKEVEN_TRIGGER_PCT,
+            trailing_trigger_pct=TRAIL_ACTIVATION_PCT,
+            trade_direction=decision.signal.direction,
+        )
+        entry_ctx.update({
+            "directional_persistence_24": self._directional_persistence_24(df),
+            "volatility_compression": self._volatility_compression(df),
+            **derived_context,
+        })
+        return augmented
 
     # ── Portfolio persistence ─────────────────────────────────────────────
 
@@ -254,6 +392,7 @@ class TradingLoopOrchestrator:
                 "total_realized_pnl": self._portfolio.total_realized_pnl,
                 "positions": [
                     {
+                        "trade_id": p.trade_id,
                         "symbol": p.symbol,
                         "side": p.side.value,
                         "quantity": p.quantity,
@@ -277,17 +416,17 @@ class TradingLoopOrchestrator:
 
     def _load_portfolio(self) -> None:
         """Load portfolio state from disk on startup."""
-        # Clean orphaned open trades in DB that don't match actual portfolio positions
-        self._cleanup_orphaned_trades()
-
         if not self._portfolio_file.exists():
+            self._cleanup_orphaned_trades()
             logger.info("no_saved_portfolio", msg="Starting with fresh portfolio")
             return
         try:
             state = _json.loads(self._portfolio_file.read_text())
             positions = []
             for p in state.get("positions", []):
+                opened_at = datetime.fromisoformat(p["opened_at"]) if p.get("opened_at") else datetime.utcnow()
                 positions.append(Position(
+                    trade_id=p.get("trade_id"),
                     symbol=p["symbol"],
                     exchange=ExchangeName.BINANCE,
                     side=OrderSide(p["side"]),
@@ -296,6 +435,7 @@ class TradingLoopOrchestrator:
                     current_price=p["current_price"],
                     unrealized_pnl=p.get("unrealized_pnl", 0.0),
                     realized_pnl=p.get("realized_pnl", 0.0),
+                    opened_at=opened_at,
                     stop_loss=p.get("stop_loss"),
                     take_profit=p.get("take_profit"),
                 ))
@@ -303,22 +443,73 @@ class TradingLoopOrchestrator:
             self._portfolio.nav = state["nav"]
             self._portfolio.total_realized_pnl = state.get("total_realized_pnl", 0.0)
             self._portfolio.positions = positions
+            self._cleanup_orphaned_trades()
             logger.info(
                 "portfolio_restored",
                 nav=f"{self._portfolio.nav:.2f}",
                 cash=f"{self._portfolio.cash:.2f}",
-                positions=len(positions),
+                positions=len(self._portfolio.positions),
             )
         except Exception as err:
             logger.warning("portfolio_load_failed", error=repr(err))
 
+    def _trade_matches_position(self, trade: dict[str, Any], pos: Position) -> bool:
+        if pos.trade_id:
+            return trade.get("trade_id") == pos.trade_id
+        return (
+            trade.get("symbol") == pos.symbol
+            and str(trade.get("side", "")).lower() == pos.side.value
+        )
+
     def _cleanup_orphaned_trades(self) -> None:
-        """Mark stale open trades as 'orphaned' so they don't pollute learning data."""
+        """Reconcile restored portfolio positions with open trade journal rows."""
         try:
             open_trades = self._trade_logger.get_open_trades()
-            if not open_trades:
+            if not open_trades and not self._portfolio.positions:
                 return
-            for t in open_trades:
+
+            remaining_trades = list(open_trades)
+            matched_positions: list[Position] = []
+            ghost_positions: list[Position] = []
+
+            for pos in self._portfolio.positions:
+                match_index = next(
+                    (idx for idx, trade in enumerate(remaining_trades) if self._trade_matches_position(trade, pos)),
+                    None,
+                )
+                if match_index is None:
+                    ghost_positions.append(pos)
+                    continue
+
+                trade = remaining_trades.pop(match_index)
+                trade_ts = trade.get("timestamp")
+                if trade_ts:
+                    try:
+                        pos.opened_at = datetime.fromisoformat(str(trade_ts))
+                    except ValueError:
+                        pass
+                pos.trade_id = str(trade.get("trade_id") or pos.trade_id or "")
+                matched_positions.append(pos)
+
+            if ghost_positions:
+                ghost_value = sum(
+                    pos.quantity * pos.current_price * (1 if pos.side == OrderSide.BUY else -1)
+                    for pos in ghost_positions
+                )
+                self._portfolio.cash += ghost_value
+                logger.info("ghost_positions_dropped", count=len(ghost_positions))
+
+            self._portfolio.positions = matched_positions
+            self._portfolio.total_unrealized_pnl = sum(pos.unrealized_pnl for pos in matched_positions)
+            self._portfolio.nav = self._portfolio.cash + sum(
+                pos.quantity * pos.current_price * (1 if pos.side == OrderSide.BUY else -1)
+                for pos in matched_positions
+            )
+
+            if not remaining_trades:
+                return
+
+            for t in remaining_trades:
                 self._trade_logger.log_trade_close(
                     trade_id=t["trade_id"],
                     exit_price=t.get("entry_price", 0),
@@ -326,7 +517,7 @@ class TradingLoopOrchestrator:
                     reward=0.0,
                     exit_context='{"exit_reason": "orphaned_on_restart"}',
                 )
-            logger.info("orphaned_trades_cleaned", count=len(open_trades))
+            logger.info("orphaned_trades_cleaned", count=len(remaining_trades))
         except Exception as err:
             logger.warning("orphan_cleanup_failed", error=repr(err))
 
@@ -360,7 +551,9 @@ class TradingLoopOrchestrator:
 
     def _is_on_cooldown(self, symbol: str) -> bool:
         """Check if we recently traded this symbol."""
-        last = self._last_trade_time.get(symbol, 0.0)
+        last = self._last_trade_time.get(symbol)
+        if last is None:
+            return False
         return (time.monotonic() - last) < COOLDOWN_SECONDS
 
     def _total_exposure_pct(self) -> float:
@@ -370,7 +563,12 @@ class TradingLoopOrchestrator:
         return self._portfolio.gross_exposure / self._portfolio.nav
 
     def _is_data_fresh(self, symbol: str) -> bool:
-        """Check if price data for this symbol is recent enough to trade on."""
+        """Check if price data for this symbol is recent enough to trade on.
+
+        Accepts both millisecond epoch integers and ISO8601 timestamp strings
+        (some ingestors serialize timestamps differently). Falls back to len
+        check when timestamp parsing fails.
+        """
         if not self._redis:
             return False
         try:
@@ -385,9 +583,41 @@ class TradingLoopOrchestrator:
             last_candle = data[-1]
             if "timestamp" in last_candle:
                 ts = last_candle["timestamp"]
-                if isinstance(ts, (int, float)):
-                    age = time.time() - ts / 1000
-                    return age < DATA_MAX_AGE_SECONDS
+                # Numeric epoch (ms)
+                try:
+                    if isinstance(ts, (int, float)):
+                        age = time.time() - float(ts) / 1000.0
+                        return age < DATA_MAX_AGE_SECONDS
+                    # Some sources write timestamp as numeric string
+                    if isinstance(ts, str) and ts.isdigit():
+                        age = time.time() - float(int(ts)) / 1000.0
+                        return age < DATA_MAX_AGE_SECONDS
+                except Exception:
+                    # Fall through to ISO parsing
+                    pass
+                # ISO string like 2026-04-06T15:10:00 or with timezone
+                if isinstance(ts, str):
+                    try:
+                        from datetime import datetime
+
+                        # datetime.fromisoformat handles most ISO formats
+                        dt = datetime.fromisoformat(ts)
+                        age = time.time() - dt.timestamp()
+                        return age < DATA_MAX_AGE_SECONDS
+                    except Exception:
+                        # Try pandas as last resort (handles more formats)
+                        try:
+                            import pandas as pd
+
+                            dt = pd.to_datetime(ts)
+                            if not dt.tzinfo:
+                                age = time.time() - dt.to_pydatetime().timestamp()
+                            else:
+                                age = time.time() - dt.tz_convert(None).to_pydatetime().timestamp()
+                            return age < DATA_MAX_AGE_SECONDS
+                        except Exception:
+                            # Give up and fall back to existence check
+                            return len(data) > 20
             # If no timestamp, just check data exists (fallback)
             return len(data) > 20
         except Exception:
@@ -572,6 +802,16 @@ class TradingLoopOrchestrator:
         quality = vol_score * 0.4 + vol_quality * 0.35 + spread_score * 0.25
         return round(max(0.0, min(quality, 1.0)), 3)
 
+    def _symbol_learning_multiplier(self, symbol: str) -> float:
+        """Confidence multiplier learned from symbol-specific historical outcomes."""
+        now = time.monotonic()
+        if now >= self._symbol_learning_scores_expires_at:
+            self._symbol_learning_scores = self._trade_logger.get_symbol_learning_scores(
+                min_trades=SYMBOL_LEARNING_MIN_TRADES
+            )
+            self._symbol_learning_scores_expires_at = now + SYMBOL_LEARNING_CACHE_SECONDS
+        return float(self._symbol_learning_scores.get(symbol, 1.0))
+
     # ── F3: Mean-reversion overlay ────────────────────────────────────────
 
     def _mean_reversion_signal(self, symbol: str) -> float | None:
@@ -734,7 +974,12 @@ class TradingLoopOrchestrator:
     # ── D5: ML performance tracking ───────────────────────────────────────
 
     def _track_ml_performance(self) -> dict:
-        """Track how well ML predictions matched actual price moves."""
+        """Track how well ML predictions matched actual price moves.
+
+        Use the same feature construction as live inference to avoid passing
+        the full DataFrame (which includes non-numeric columns like timestamp)
+        directly into sklearn models.
+        """
         results = {}
         for symbol, predictor in self._ml_predictors.items():
             if "_" in symbol and symbol.split("_")[1] in ("4h", "1d"):
@@ -742,19 +987,29 @@ class TradingLoopOrchestrator:
             df = self._build_feature_dataframe(symbol)
             if df is None or len(df) < 10:
                 continue
-            pred = predictor.predict(df)
-            if not pred:
+            try:
+                # Build feature matrix and pick last row (same as _get_ml_prediction)
+                feats = build_features(df)
+                feature_cols = [c for c in feats.columns if not c.startswith("target_")]
+                if len(feats) == 0 or feature_cols == []:
+                    continue
+                last_row = feats[feature_cols].iloc[-1].values.astype(np.float32)
+                pred = predictor.predict(last_row)
+                if not pred:
+                    continue
+                close = pd.to_numeric(df["close"], errors="coerce")
+                actual_return = close.iloc[-1] / close.iloc[-2] - 1 if close.iloc[-2] > 0 else 0
+                predicted_dir = "up" if pred["signal"] > 0 else "down"
+                actual_dir = "up" if actual_return > 0 else "down"
+                results[symbol] = {
+                    "predicted": predicted_dir,
+                    "actual": actual_dir,
+                    "correct": predicted_dir == actual_dir,
+                    "confidence": pred["confidence"],
+                }
+            except Exception as err:
+                logger.warning("ml_performance_tracking_failed", symbol=symbol, error=str(err))
                 continue
-            close = pd.to_numeric(df["close"], errors="coerce")
-            actual_return = close.iloc[-1] / close.iloc[-2] - 1 if close.iloc[-2] > 0 else 0
-            predicted_dir = "up" if pred["signal"] > 0 else "down"
-            actual_dir = "up" if actual_return > 0 else "down"
-            results[symbol] = {
-                "predicted": predicted_dir,
-                "actual": actual_dir,
-                "correct": predicted_dir == actual_dir,
-                "confidence": pred["confidence"],
-            }
         return results
 
     # ── Redis for price/sentiment ─────────────────────────────────────────
@@ -840,7 +1095,9 @@ class TradingLoopOrchestrator:
                             contributing_signals={
                                 **fused.contributing_signals,
                                 "ml_prediction": ml_signal,
+                                "ml_confidence": ml_conf,
                                 "ml_agreement": True,
+                                "ml_reward_overlay": ml_pred.get("reward_overlay", 0.0),
                             },
                             timestamp=fused.timestamp,
                         )
@@ -854,23 +1111,29 @@ class TradingLoopOrchestrator:
                             contributing_signals={
                                 **fused.contributing_signals,
                                 "ml_prediction": ml_signal,
+                                "ml_confidence": ml_conf,
                                 "ml_agreement": False,
+                                "ml_reward_overlay": ml_pred.get("reward_overlay", 0.0),
                             },
                             timestamp=fused.timestamp,
                         )
 
+                # Effective threshold adapts per-symbol using learning scores
+                threshold = self._effective_entry_threshold(symbol)
+                ml_blended_flag = bool(ml_pred and abs(ml_pred.get("signal", 0)) > 0.01)
                 logger.info(
                     "signal_computed",
                     symbol=symbol,
                     direction=f"{fused.direction:.4f}",
                     confidence=f"{fused.confidence:.4f}",
-                    ml_blended=bool(ml_pred and abs(ml_pred.get("signal", 0)) > 0.01),
-                    passes_threshold=abs(fused.direction) >= MIN_SIGNAL_CONFIDENCE,
+                    ml_blended=ml_blended_flag,
+                    entry_threshold=f"{threshold:.4f}",
+                    passes_threshold=abs(fused.direction) >= threshold,
                 )
-                if abs(fused.direction) >= MIN_SIGNAL_CONFIDENCE:
+                if abs(fused.direction) >= threshold:
                     # Trend filter: only trade in direction of EMA-50
                     if USE_TREND_FILTER and len(df) >= 50:
-                        ema50 = df["close"].ewm(span=50, adjust=False).iloc[-1]
+                        ema50 = df["close"].ewm(span=50, adjust=False).mean().iloc[-1]
                         current_price = df["close"].iloc[-1]
                         if fused.direction > 0 and current_price < ema50:
                             logger.info("trend_filter_reject", symbol=symbol,
@@ -881,11 +1144,16 @@ class TradingLoopOrchestrator:
                                         reason="sell_above_ema50")
                             continue
 
-                    # Require ML agreement (backtested as critical for profitability)
+                    # Require ML agreement and sufficient ML confidence
                     ml_agreed = fused.contributing_signals.get("ml_agreement", False)
+                    ml_conf_val = float(fused.contributing_signals.get("ml_confidence", 0.0) or 0.0)
                     if not ml_agreed:
                         logger.info("ml_filter_reject", symbol=symbol,
                                     reason="ml_disagrees_or_absent")
+                        continue
+                    if ml_conf_val < MIN_ML_CONFIDENCE:
+                        logger.info("ml_filter_reject_low_confidence", symbol=symbol,
+                                    ml_confidence=ml_conf_val, min_required=MIN_ML_CONFIDENCE)
                         continue
 
                     signals.append(fused)
@@ -1064,6 +1332,7 @@ class TradingLoopOrchestrator:
         self._portfolio.cash -= notional if side == OrderSide.BUY else -notional
         self._portfolio.positions.append(
             Position(
+                trade_id=order_id,
                 symbol=symbol,
                 exchange=ExchangeName.BINANCE,
                 side=side,
@@ -1074,17 +1343,28 @@ class TradingLoopOrchestrator:
             )
         )
 
-        # ── Log trade for learning ──
-        df = self._build_feature_dataframe(symbol)
-        fv = self._get_feature_vector(symbol, df) if df is not None else None
         sentiment = self._get_sentiment(symbol.replace("USDT", ""))
 
-        # Build entry context telemetry (G3)
+        mtf_alignment = float(decision.signal.contributing_signals.get("mtf_alignment", 1.0) or 1.0)
+        pair_quality = float(decision.signal.contributing_signals.get("pair_quality", self._pair_quality_score(symbol)) or 0.5)
+        regime_multiplier = float(decision.signal.contributing_signals.get("regime_mult", self._regime_confidence_multiplier()) or 0.9)
+        ml_signal = float(decision.signal.contributing_signals.get("ml_prediction", 0.0) or 0.0)
+        ml_confidence = float(decision.signal.contributing_signals.get("ml_confidence", 0.0) or 0.0)
+        atr = float(self._compute_atr(symbol) or 0.0)
+
         entry_ctx = {
             "contributing_signals": decision.signal.contributing_signals,
             "regime": self._detect_regime(),
-            "pair_quality": self._pair_quality_score(symbol),
+            "pair_quality": pair_quality,
+            "mtf_alignment": mtf_alignment,
+            "regime_multiplier": regime_multiplier,
+            "ml_signal": ml_signal,
+            "ml_confidence": ml_confidence,
+            "atr": atr,
+            "entry_threshold": self._entry_signal_threshold(),
+            "paper_max_position_age_hours": self._config.paper_max_position_age_hours,
         }
+        fv = self._build_learning_feature_vector(symbol, price, decision, entry_ctx)
 
         self._trade_logger.log_trade_open(TradeRecord(
             trade_id=order_id,
@@ -1407,7 +1687,7 @@ class TradingLoopOrchestrator:
 
             # Time-based exit: faster for losers, slower for winners
             age_hours = (datetime.utcnow() - pos.opened_at).total_seconds() / 3600
-            max_hours = STALE_POSITION_HOURS_LOSE if pnl_pct < 0 else STALE_POSITION_HOURS_WIN
+            max_hours = self._position_max_age_hours(pnl_pct)
             if age_hours > max_hours and pos not in [p for p, _, _ in positions_to_close]:
                 positions_to_close.append((pos, current_price, "time_exit"))
 
@@ -1468,16 +1748,20 @@ class TradingLoopOrchestrator:
                 ),
                 "pair_quality_at_exit": self._pair_quality_score(pos.symbol),
             })
-            open_trades = self._trade_logger.get_open_trades()
-            for t in open_trades:
-                if t["symbol"] == pos.symbol:
-                    self._trade_logger.log_trade_close(
-                        trade_id=t["trade_id"],
-                        exit_price=exit_price,
-                        realized_pnl=pnl,
-                        exit_context=exit_ctx,
-                    )
-                    break
+            close_trade_id = pos.trade_id
+            if close_trade_id is None:
+                open_trades = self._trade_logger.get_open_trades()
+                for t in open_trades:
+                    if t["symbol"] == pos.symbol:
+                        close_trade_id = t["trade_id"]
+                        break
+            if close_trade_id is not None:
+                self._trade_logger.log_trade_close(
+                    trade_id=close_trade_id,
+                    exit_price=exit_price,
+                    realized_pnl=pnl,
+                    exit_context=exit_ctx,
+                )
 
             pnl_pct = pnl / (pos.entry_price * close_quantity) * 100 if pos.entry_price * close_quantity > 0 else 0
 
@@ -1585,7 +1869,7 @@ class TradingLoopOrchestrator:
         for sym in symbols:
             if sym not in signaled_symbols:
                 mr_signal = self._mean_reversion_signal(sym)
-                if mr_signal is not None and abs(mr_signal) >= MIN_SIGNAL_CONFIDENCE:
+                if mr_signal is not None and abs(mr_signal) >= self._entry_signal_threshold():
                     signals.append(FusedSignal(
                         symbol=sym,
                         direction=mr_signal,
@@ -1686,6 +1970,10 @@ class TradingLoopOrchestrator:
             pair_quality = self._pair_quality_score(fused.symbol)
             adjusted_confidence *= (0.6 + 0.4 * pair_quality)  # 60-100% based on quality
 
+            # Learned symbol prior from actual paper/live outcomes.
+            symbol_learning = self._symbol_learning_multiplier(fused.symbol)
+            adjusted_confidence *= symbol_learning
+
             fused = FusedSignal(
                 symbol=fused.symbol,
                 direction=fused.direction,
@@ -1695,6 +1983,7 @@ class TradingLoopOrchestrator:
                     "mtf_alignment": mtf_alignment,
                     "pair_quality": pair_quality,
                     "regime_mult": regime_mult,
+                    "symbol_learning": symbol_learning,
                 },
                 timestamp=fused.timestamp,
             )
@@ -1739,7 +2028,7 @@ class TradingLoopOrchestrator:
                     logger.info("trade_rejected", symbol=fused.symbol, reason=rejection_reason)
 
         # 7. Periodic online learning
-        if self._online_learner.should_retrain():
+        if self._online_learner.should_retrain(self._trade_logger):
             stats = self._online_learner.retrain_from_journal(self._trade_logger)
             if stats:
                 await self._alerts.risk_alert("model_retrained", stats)
