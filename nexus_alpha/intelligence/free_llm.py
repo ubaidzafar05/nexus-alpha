@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import time
 from typing import Any
@@ -53,6 +54,7 @@ class FreeLLMClient:
         groq_api_key: str = "",
         groq_model: str = "llama-3.3-70b-versatile",
         timeout: float = 60.0,
+        strict_fail: bool = True,
     ) -> None:
         self._ollama_url = ollama_base_url.rstrip("/")
         self._primary = primary_model
@@ -64,9 +66,18 @@ class FreeLLMClient:
         self._groq_model = groq_model
         self._timeout = timeout
         self._last_ollama_warning_at = 0.0
+        # If strict_fail is True, failures raise RuntimeError when no fallback is configured.
+        # If False, the client degrades gracefully and returns an empty result instead.
+        self._strict_fail = strict_fail
+        # Internal tuning: increase retries/backoff for local model latency
+        self._ollama_max_attempts = max(3, int(os.getenv('OLLAMA_MAX_ATTEMPTS','5')))
+        self._ollama_backoff_base = float(os.getenv('OLLAMA_BACKOFF_BASE','1.0'))
+        self._ollama_connect_timeout = float(os.getenv('OLLAMA_CONNECT_TIMEOUT','30.0'))
 
     @classmethod
     def from_config(cls, cfg: LLMConfig) -> "FreeLLMClient":
+        # Allow operator to relax strict failure behaviour via env var LLM_ALLOW_DEGRADE=1
+        allow_degrade = os.getenv("LLM_ALLOW_DEGRADE", "0") in ("1", "true", "True")
         return cls(
             ollama_base_url=cfg.ollama_base_url,
             primary_model=cfg.ollama_primary_model,
@@ -76,6 +87,7 @@ class FreeLLMClient:
             use_groq_fallback=cfg.use_groq_fallback,
             groq_api_key=cfg.groq_api_key.get_secret_value(),
             groq_model=cfg.groq_model,
+            strict_fail=not allow_degrade,
         )
 
     # ── Core completion ──────────────────────────────────────────────────────
@@ -94,9 +106,15 @@ class FreeLLMClient:
             return await self._ollama_complete(prompt, system, chosen_model, temperature, max_tokens)
         except Exception as err:
             self._log_ollama_warning(err)
-            if not (self._use_groq_fallback and self._groq_key):
+            # If Groq fallback is configured and a key is present, try it.
+            if self._use_groq_fallback and self._groq_key:
+                return await self._groq_complete(prompt, system, temperature, max_tokens)
+            # If strict failures are enabled, raise to preserve legacy/test behaviour.
+            if self._strict_fail:
                 raise RuntimeError("Ollama unavailable and Groq fallback is disabled") from err
-            return await self._groq_complete(prompt, system, temperature, max_tokens)
+            # Otherwise degrade gracefully and return empty string; callers may handle this.
+            logger.warning("ollama_degraded", error=repr(err))
+            return ""
 
     async def complete_json(
         self,
@@ -185,19 +203,28 @@ class FreeLLMClient:
             "options": {"temperature": temperature, "num_predict": max_tokens},
             "stream": False,
         }
-        timeout = httpx.Timeout(self._timeout, connect=10.0)
+        timeout = httpx.Timeout(self._timeout, connect=self._ollama_connect_timeout)
         async with httpx.AsyncClient(timeout=timeout) as client:
             last_error: Exception | None = None
-            for attempt in range(2):
+            for attempt in range(self._ollama_max_attempts):
                 try:
                     resp = await client.post(f"{self._ollama_url}/api/chat", json=payload)
                     resp.raise_for_status()
                     return resp.json()["message"]["content"]
-                except Exception as err:
+                except httpx.HTTPStatusError as err:
+                    # Permanent (4xx) errors — log and propagate
+                    body = err.response.text[:500] if err.response is not None else None
+                    logger.warning("ollama_http_error", status=err.response.status_code if err.response is not None else None, body=body)
+                    raise
+                except (httpx.RequestError, httpx.TransportError, asyncio.TimeoutError) as err:
                     last_error = err
-                    if attempt == 0:
-                        await asyncio.sleep(0.5)
+                    if attempt < self._ollama_max_attempts - 1:
+                        jitter = float(os.getenv("OLLAMA_BACKOFF_JITTER", "0.3"))
+                        sleep_for = self._ollama_backoff_base * (2 ** attempt) + (jitter * attempt)
+                        logger.info("ollama_retry", attempt=attempt + 1, sleep_for=f"{sleep_for:.2f}s", error=repr(err))
+                        await asyncio.sleep(sleep_for)
                         continue
+                    logger.warning("ollama_retries_exhausted", error=repr(last_error))
                     raise
             if last_error is not None:
                 raise last_error
