@@ -173,10 +173,22 @@ class HybridSentimentPipeline:
         text = f"{article.get('title', '')}\n{article.get('text', '')[:500]}"
         try:
             async with self._deep_analysis_semaphore:
-                data = await self._llm.complete_json(
-                    _SENTIMENT_PROMPT.format(text=text),
-                    system=_SENTIMENT_SYSTEM,
-                )
+                # Use reasoning model but allow fallback to fast model if heavy model times out
+                try:
+                    data = await self._llm.complete_json(
+                        _SENTIMENT_PROMPT.format(text=text),
+                        system=_SENTIMENT_SYSTEM,
+                        model=self._llm._reasoning,
+                    )
+                except Exception as err:
+                    # log and fallback to fast model (best-effort)
+                    logger.warning("deep_reasoning_failed_try_fast", error=repr(err))
+                    data_raw = await self._llm.complete_fast(_SENTIMENT_PROMPT.format(text=text), system=_SENTIMENT_SYSTEM)
+                    try:
+                        import json as _json
+                        data = _json.loads(_strip_json_fences(data_raw))
+                    except Exception:
+                        data = {"sentiment_score": 0.0, "confidence": 0.0, "affected_assets": [], "event_type": "other", "time_horizon": "short", "reasoning": ""}
             return SentimentResult(
                 sentiment_score=float(data.get("sentiment_score", 0.0)),
                 confidence=float(data.get("confidence", 0.5)),

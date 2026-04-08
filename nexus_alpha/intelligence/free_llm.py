@@ -133,24 +133,51 @@ class FreeLLMClient:
             raise
 
     async def complete_fast(self, prompt: str, system: str = "", temperature: float = 0.1) -> str:
-        """Use the fast model (Mistral) for low-latency structured tasks."""
-        return await self.complete(prompt, system=system, model=self._fast, temperature=temperature)
+        """Use the fast model (Mistral) for low-latency structured tasks.
+
+        If the fast model itself fails (rare), return empty string or raise depending on strict_fail.
+        """
+        try:
+            return await self.complete(prompt, system=system, model=self._fast, temperature=temperature)
+        except Exception as err:
+            logger.warning("fast_model_failed", error=repr(err))
+            if self._strict_fail:
+                raise
+            return ""
 
     async def complete_reasoning(self, prompt: str, system: str = "", temperature: float = 0.1) -> str:
-        """Use the reasoning model (DeepSeek-R1) for debate/cross-validation."""
-        return await self.complete(prompt, system=system, model=self._reasoning, temperature=temperature)
+        """Use the reasoning model (DeepSeek-R1) for debate/cross-validation.
+
+        This method prefers the reasoning model but falls back to the fast model if the heavy model
+        times out or fails, to ensure downstream tasks receive a result.
+        """
+        try:
+            return await self.complete(prompt, system=system, model=self._reasoning, temperature=temperature)
+        except Exception as err:
+            logger.warning("reasoning_model_failed", error=repr(err))
+            # fall back to fast model for best-effort
+            try:
+                return await self.complete_fast(prompt, system=system, temperature=temperature)
+            except Exception:
+                if self._strict_fail:
+                    raise
+                return ""
 
     # ── Embeddings ───────────────────────────────────────────────────────────
 
     async def embed(self, text: str) -> list[float]:
         """Generate embeddings using nomic-embed-text via Ollama (free, 768-dim)."""
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.post(
-                f"{self._ollama_url}/api/embeddings",
-                json={"model": self._embed_model, "prompt": text},
-            )
-            resp.raise_for_status()
-            return resp.json()["embedding"]
+        # Use a semaphore to limit concurrent embedding requests (embeddings can be heavy)
+        if not hasattr(self, "_embed_semaphore"):
+            self._embed_semaphore = asyncio.Semaphore(int(os.getenv("OLLAMA_EMBED_CONCURRENCY", "4")))
+        async with self._embed_semaphore:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(
+                    f"{self._ollama_url}/api/embeddings",
+                    json={"model": self._embed_model, "prompt": text},
+                )
+                resp.raise_for_status()
+                return resp.json()["embedding"]
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Batch embeddings — sequential calls to Ollama."""
