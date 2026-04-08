@@ -92,19 +92,35 @@ class TelegramAlerts:
 
     @classmethod
     def from_env(cls, env_file: str = ".env") -> TelegramAlerts:
-        """Load credentials from environment variables."""
+        """Load credentials from environment variables or a .env file.
+
+        Will attempt to extract a numeric chat id if the provided value contains extra
+        content (e.g. pasted JSON or bot responses). This prevents common misconfiguration
+        where users paste API responses into TELEGRAM_CHAT_ID.
+        """
         import os
+        import re
         from pathlib import Path
 
         from dotenv import dotenv_values
 
         file_values = dotenv_values(Path(env_file)) if Path(env_file).exists() else {}
         token = os.getenv("TELEGRAM_BOT_TOKEN", "") or str(file_values.get("TELEGRAM_BOT_TOKEN", ""))
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "") or str(file_values.get("TELEGRAM_CHAT_ID", ""))
+        chat_id_raw = os.getenv("TELEGRAM_CHAT_ID", "") or str(file_values.get("TELEGRAM_CHAT_ID", ""))
+
+        # Normalize chat_id: prefer an integer string if one exists inside the provided value
+        chat_id = ""
+        if chat_id_raw:
+            m = re.search(r"(-?\d+)", chat_id_raw)
+            if m:
+                chat_id = m.group(1)
+            else:
+                chat_id = chat_id_raw
+
         if not token or not chat_id:
             logger.warning(
                 "telegram_not_configured",
-                hint="Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID",
+                hint="Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (numeric chat id).",
             )
         return cls(bot_token=token, chat_id=chat_id)
 
@@ -145,8 +161,8 @@ class TelegramAlerts:
 
     async def _do_send(self, text: str) -> bool:
         # Exponential backoff with jitter for transport-level failures
-        max_attempts = 5
-        base_backoff = 0.5
+        max_attempts = 6
+        base_backoff = 1.0
         for attempt in range(max_attempts):
             try:
                 client = self._get_client()
@@ -207,6 +223,7 @@ class TelegramAlerts:
                     timeout=15.0,
                     limits=httpx.Limits(max_connections=10, max_keepalive_connections=2),
                     proxies=proxies,
+                    trust_env=True,
                 )
             except TypeError:
                 # Older httpx versions do not accept 'proxies' in the constructor.
@@ -215,6 +232,7 @@ class TelegramAlerts:
                 self._client = httpx.AsyncClient(
                     timeout=15.0,
                     limits=httpx.Limits(max_connections=10, max_keepalive_connections=2),
+                    trust_env=True,
                 )
         return self._client
 
