@@ -1,0 +1,40 @@
+groups:
+  - name: nexus_ollama.rules
+    rules:
+      - alert: OllamaHighRetryRate
+        expr: rate(nexus_ollama_retries_total[5m]) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Ollama retry rate"
+          description: "Ollama retry rate > 0.2/sec over 5m: {{ $value }}"
+
+      - alert: OllamaFailures
+        expr: rate(nexus_ollama_failures_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ollama failures detected"
+          description: "Ollama failures observed in the last 5m: {{ $value }}"
+
+      - alert: OllamaLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(nexus_ollama_request_latency_seconds_bucket[5m])) by (le)) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Ollama latency (p95 > 10s)"
+          description: "P95 latency is higher than 10s"
+
+  - name: nexus_retrain.rules
+    rules:
+      - alert: RetrainRejectedTooOften
+        expr: rate(nexus_retrain_rejected_total[1h]) > 0.5
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent retrain rejections"
+          description: "Retrain attempts rejected too often (rate > 0.5/hour). Check data quality or thresholds."
