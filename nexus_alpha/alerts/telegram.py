@@ -136,7 +136,11 @@ class TelegramAlerts:
             logger.debug("telegram_not_configured_skipping_alert")
             return False
 
-        formatted = f"{level.icon} *NEXUS-ALPHA*\n\n{message}"
+        # Use plain-text messages (no Markdown) to avoid parse errors from unescaped content.
+        formatted = f"{level.icon} NEXUS-ALPHA\n\n{message}"
+        # Truncate to Telegram limits (~4096 chars).
+        if len(formatted) > 3900:
+            formatted = formatted[:3897] + "..."
 
         async with self._lock:
             import time
@@ -172,7 +176,6 @@ class TelegramAlerts:
                     json={
                         "chat_id": self._chat_id,
                         "text": text,
-                        "parse_mode": "Markdown",
                     },
                     timeout=15.0,
                 )
