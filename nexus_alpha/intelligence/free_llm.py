@@ -194,7 +194,15 @@ class FreeLLMClient:
             return await self.complete(prompt, system=system, model=self._reasoning, temperature=temperature)
         except Exception as err:
             logger.warning("reasoning_model_failed", error=repr(err))
-            # fall back to fast model for best-effort
+            # fall back to fast model for best-effort; record a fallback metric if available
+            try:
+                from nexus_alpha.monitoring.metrics import LLM_FALLBACKS
+                try:
+                    LLM_FALLBACKS.labels(from_model=self._reasoning, to_model=self._fast).inc()
+                except Exception:
+                    LLM_FALLBACKS.inc()
+            except Exception:
+                pass
             try:
                 return await self.complete_fast(prompt, system=system, temperature=temperature)
             except Exception:
