@@ -216,7 +216,8 @@ class FreeLLMClient:
         """Generate embeddings using nomic-embed-text via Ollama (free, 768-dim)."""
         # Use a semaphore to limit concurrent embedding requests (embeddings can be heavy)
         if not hasattr(self, "_embed_semaphore"):
-            self._embed_semaphore = asyncio.Semaphore(int(os.getenv("OLLAMA_EMBED_CONCURRENCY", "4")))
+            # Default to conservative concurrency to avoid OOM/CPU pressure on small hosts
+            self._embed_semaphore = asyncio.Semaphore(max(1, int(os.getenv("OLLAMA_EMBED_CONCURRENCY", "1"))))
         async with self._embed_semaphore:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(
