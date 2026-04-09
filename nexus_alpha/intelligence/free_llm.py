@@ -28,6 +28,45 @@ from nexus_alpha.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Optional Prometheus metrics. If prometheus_client is not available we provide
+# no-op fallbacks so the module can still be used without adding a hard dependency.
+try:
+    from prometheus_client import Counter, Histogram
+
+    METRICS_REQUESTS = Counter(
+        "nexus_ollama_requests_total",
+        "Total Ollama requests attempted",
+        ["model", "type"],
+    )
+    METRICS_FAILURES = Counter(
+        "nexus_ollama_failures_total",
+        "Total Ollama failures",
+        ["model", "type"],
+    )
+    METRICS_RETRIES = Counter(
+        "nexus_ollama_retries_total",
+        "Ollama retry attempts",
+        ["model"],
+    )
+    METRICS_LATENCY = Histogram(
+        "nexus_ollama_request_latency_seconds",
+        "Latency of Ollama requests",
+        ["model", "type"],
+    )
+except Exception:
+    class _Noop:
+        def labels(self, *_, **__):
+            return self
+
+        def inc(self, *_, **__):
+            return None
+
+        def observe(self, *_, **__):
+            return None
+
+    METRICS_REQUESTS = METRICS_FAILURES = METRICS_RETRIES = METRICS_LATENCY = _Noop()
+
+
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 
@@ -230,6 +269,13 @@ class FreeLLMClient:
             "options": {"temperature": temperature, "num_predict": max_tokens},
             "stream": False,
         }
+        # Instrumentation: record request attempt and measure latency
+        try:
+            METRICS_REQUESTS.labels(model=model, type="completion").inc()
+        except Exception:
+            pass
+        start_time = time.monotonic()
+
         timeout = httpx.Timeout(self._timeout, connect=self._ollama_connect_timeout)
         async with httpx.AsyncClient(timeout=timeout) as client:
             last_error: Exception | None = None
@@ -237,21 +283,42 @@ class FreeLLMClient:
                 try:
                     resp = await client.post(f"{self._ollama_url}/api/chat", json=payload)
                     resp.raise_for_status()
-                    return resp.json()["message"]["content"]
+                    content = resp.json()["message"]["content"]
+                    # Record latency
+                    try:
+                        METRICS_LATENCY.labels(model=model, type="completion").observe(time.monotonic() - start_time)
+                    except Exception:
+                        pass
+                    return content
                 except httpx.HTTPStatusError as err:
                     # Permanent (4xx) errors — log and propagate
                     body = err.response.text[:500] if err.response is not None else None
                     logger.warning("ollama_http_error", status=err.response.status_code if err.response is not None else None, body=body)
+                    try:
+                        METRICS_FAILURES.labels(model=model, type="http").inc()
+                    except Exception:
+                        pass
                     raise
                 except (httpx.RequestError, httpx.TransportError, asyncio.TimeoutError) as err:
                     last_error = err
+                    # count this retry attempt
+                    try:
+                        METRICS_RETRIES.labels(model=model).inc()
+                        METRICS_FAILURES.labels(model=model, type="transport").inc()
+                    except Exception:
+                        pass
                     if attempt < self._ollama_max_attempts - 1:
                         jitter = float(os.getenv("OLLAMA_BACKOFF_JITTER", "0.3"))
                         sleep_for = self._ollama_backoff_base * (2 ** attempt) + (jitter * attempt)
                         logger.info("ollama_retry", attempt=attempt + 1, sleep_for=f"{sleep_for:.2f}s", error=repr(err))
                         await asyncio.sleep(sleep_for)
                         continue
+                    # exhausted
                     logger.warning("ollama_retries_exhausted", error=repr(last_error))
+                    try:
+                        METRICS_FAILURES.labels(model=model, type="exhausted").inc()
+                    except Exception:
+                        pass
                     raise
             if last_error is not None:
                 raise last_error
