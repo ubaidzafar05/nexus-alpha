@@ -17,6 +17,15 @@ def test_safe_retrain_promote(monkeypatch, tmp_path):
     candidate.write_text("dummy")
     promote = tmp_path / "promote.pkl"
 
+    # Replace OnlineLearner.__init__ to avoid actual model loading
+    def dummy_init(self, predictor=None, retrain_interval_hours=6, min_new_trades=20, min_total_trades=50, *args, **kwargs):
+        self.predictor = predictor
+        self.retrain_interval = retrain_interval_hours * 3600
+        self.min_new_trades = min_new_trades
+        self.min_total_trades = min_total_trades
+        self._last_retrain = 0.0
+    monkeypatch.setattr(OnlineLearner, "__init__", dummy_init)
+
     # Mock OnlineLearner.retrain_from_journal to return an accepted stats dict
     def mock_retrain(self, tl):
         return {"updated": True, "n_trades": 100, "val_direction_accuracy": 0.62, "val_balanced_accuracy": 0.55}
@@ -45,6 +54,15 @@ def test_safe_retrain_reject(monkeypatch, tmp_path):
     candidate = tmp_path / "candidate.pkl"
     candidate.write_text("dummy")
     promote = tmp_path / "promote.pkl"
+
+    # Replace OnlineLearner.__init__ to avoid actual model loading
+    def dummy_init(self, predictor=None, retrain_interval_hours=6, min_new_trades=20, min_total_trades=50, *args, **kwargs):
+        self.predictor = predictor
+        self.retrain_interval = retrain_interval_hours * 3600
+        self.min_new_trades = min_new_trades
+        self.min_total_trades = min_total_trades
+        self._last_retrain = 0.0
+    monkeypatch.setattr(OnlineLearner, "__init__", dummy_init)
 
     def mock_retrain(self, tl):
         return {"updated": False, "n_trades": 20, "val_direction_accuracy": 0.4, "val_balanced_accuracy": 0.35}
