@@ -40,7 +40,11 @@ def main(
         msg = "No retrain dataset available; aborting safe_retrain"
         logger.info(msg)
         if alerts.is_configured:
-            alerts.send(msg)
+            try:
+                # TelegramAlerts.send is async; provide sync wrapper
+                __import__('asyncio').run(alerts.send(msg))
+            except Exception:
+                logger.exception('telegram_send_failed')
         return 1
 
     # Summarize
@@ -53,7 +57,10 @@ def main(
         msg = f"Retrain rejected by validation: updated={updated} n_trades={n_trades} val_acc={val_acc} val_bal={val_bal}"
         logger.info(msg)
         if alerts.is_configured:
-            alerts.send(msg)
+            try:
+                __import__('asyncio').run(alerts.send(msg))
+            except Exception:
+                logger.exception('telegram_send_failed')
         # cleanup candidate if exists
         try:
             if candidate.exists():
@@ -69,7 +76,10 @@ def main(
         msg = "Benchmark unavailable or insufficient trades; rejecting promotion"
         logger.info(msg)
         if alerts.is_configured:
-            alerts.send(msg)
+            try:
+                __import__('asyncio').run(alerts.send(msg))
+            except Exception:
+                logger.exception('telegram_send_failed')
         try:
             if candidate.exists():
                 candidate.unlink()
@@ -99,7 +109,10 @@ def main(
         msg = f"Benchmark did not show consistent improvement; rejecting promotion (bench={bench})"
         logger.info(msg)
         if alerts.is_configured:
-            alerts.send(msg)
+            try:
+                __import__('asyncio').run(alerts.send(msg))
+            except Exception:
+                logger.exception('telegram_send_failed')
         try:
             if candidate.exists():
                 candidate.unlink()
@@ -114,12 +127,18 @@ def main(
         msg = f"✅ Retrain promoted to {promote} (n_trades={n_trades} val_acc={val_acc} val_bal={val_bal})"
         logger.info(msg)
         if alerts.is_configured:
-            alerts.send(msg)
+            try:
+                __import__('asyncio').run(alerts.send(msg))
+            except Exception:
+                logger.exception('telegram_send_failed')
         return 0
     except Exception as e:
         logger.exception("promotion_failed")
         if alerts.is_configured:
-            alerts.send(f"Promotion failed: {e}")
+            try:
+                __import__('asyncio').run(alerts.send(f"Promotion failed: {e}"))
+            except Exception:
+                logger.exception('telegram_send_failed')
         return 5
 
 
