@@ -1,0 +1,6 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY alertmanager/telegram_forwarder.py /app/telegram_forwarder.py
+RUN pip install --no-cache-dir flask requests
+EXPOSE 5001
+CMD ["python", "telegram_forwarder.py"]

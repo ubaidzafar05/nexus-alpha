@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+WORKDIR /app
+
+COPY ../../pyproject.toml /tmp/pyproject.toml
+COPY ../../nexus_alpha /app/nexus_alpha
+COPY ../../nexus_alpha.egg-info /app/nexus_alpha.egg-info
+COPY ../self_healing/ollama_monitor.py /app/ollama_monitor.py
+
+RUN pip install --no-cache-dir requests httpx prometheus-client . && \
+    rm -rf /root/.cache/pip
+
+EXPOSE 8002
+CMD ["python", "ollama_monitor.py"]

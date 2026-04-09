@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+WORKDIR /app
+
+COPY ../../pyproject.toml /tmp/pyproject.toml
+COPY ../../nexus_alpha /app/nexus_alpha
+COPY ../../nexus_alpha.egg-info /app/nexus_alpha.egg-info
+COPY metrics_server.py /app/metrics_server.py
+
+RUN pip install --no-cache-dir prometheus-client . && \
+    rm -rf /root/.cache/pip
+
+EXPOSE 8000
+CMD ["python", "metrics_server.py"]

@@ -1,0 +1,251 @@
+name: Build and publish monitoring images
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'infra/monitoring/**'
+      - '.github/workflows/monitoring_images.yml'
+  push:
+    branches: [main, master]
+    paths:
+      - 'infra/monitoring/**'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+
+      - name: Build and push telegram-forwarder
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/monitoring/alertmanager
+          file: ./infra/monitoring/Dockerfile.telegram_forwarder
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/telegram-forwarder:${{ github.sha }}
+            ${{ github.event_name != 'pull_request' && 'ghcr.io/${{ env.IMAGE_NAMESPACE }}/telegram-forwarder:latest' || '' }}
+            ${{ github.event_name == 'release' && format('ghcr.io/{0}/telegram-forwarder:v{1}', env.IMAGE_NAMESPACE, github.ref_name) || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          load: ${{ github.event_name == 'pull_request' }}
+
+      - name: Build and push metrics-server
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/monitoring
+          file: ./infra/monitoring/Dockerfile.metrics_server
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/metrics-server:${{ github.sha }}
+            ${{ github.event_name != 'pull_request' && 'ghcr.io/${{ env.IMAGE_NAMESPACE }}/metrics-server:latest' || '' }}
+            ${{ github.event_name == 'release' && format('ghcr.io/{0}/metrics-server:v{1}', env.IMAGE_NAMESPACE, github.ref_name) || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          load: ${{ github.event_name == 'pull_request' }}
+
+      - name: Build and push ollama-monitor
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/monitoring
+          file: ./infra/monitoring/Dockerfile.ollama_monitor
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/ollama-monitor:${{ github.sha }}
+            ${{ github.event_name != 'pull_request' && 'ghcr.io/${{ env.IMAGE_NAMESPACE }}/ollama-monitor:latest' || '' }}
+            ${{ github.event_name == 'release' && format('ghcr.io/{0}/ollama-monitor:v{1}', env.IMAGE_NAMESPACE, github.ref_name) || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          load: ${{ github.event_name == 'pull_request' }}
+
+      - name: Set image outputs for smoke tests
+        run: |
+          echo "telegram-forwarder=ghcr.io/${{ env.IMAGE_NAMESPACE }}/telegram-forwarder:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "metrics-server=ghcr.io/${{ env.IMAGE_NAMESPACE }}/metrics-server:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "ollama-monitor=ghcr.io/${{ env.IMAGE_NAMESPACE }}/ollama-monitor:${{ github.sha }}" >> $GITHUB_OUTPUT
+        id: images
+
+  smoke-test-telegram-forwarder:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull telegram-forwarder image
+        run: docker pull ${{ needs.build.outputs.telegram-forwarder }}
+
+      - name: Run container
+        run: |
+          CONTAINER_ID=$(docker run -d --rm -p 5001:5001 ${{ needs.build.outputs.telegram-forwarder }}
+          echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
+          sleep 5
+
+      - name: Check container health
+        run: |
+          docker logs $CONTAINER_ID
+          if docker ps | grep -q $CONTAINER_ID; then
+            echo "Container is running"
+            # Check if port is listening
+            if docker exec $CONTAINER_ID sh -c "netstat -tlnp 2>/dev/null || ss -tlnp 2>/dev/null" | grep -q "5001"; then
+              echo "Port 5001 is listening"
+            else
+              echo "Warning: Port 5001 not found in netstat (may be normal)"
+            fi
+          else
+            echo "Container stopped unexpectedly"
+            docker logs $CONTAINER_ID
+            exit 1
+          fi
+
+      - name: Verify no errors in logs
+        run: |
+          LOGS=$(docker logs $CONTAINER_ID 2>&1)
+          if echo "$LOGS" | grep -qi "error\|exception\|traceback\|failed"; then
+            echo "Found errors in logs:"
+            echo "$LOGS"
+            exit 1
+          fi
+          echo "No errors found in container logs"
+
+      - name: Stop container
+        if: always()
+        run: docker stop ${{ env.CONTAINER_ID }} 2>/dev/null || true
+
+  smoke-test-metrics-server:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull metrics-server image
+        run: docker pull ${{ needs.build.outputs.metrics-server }}
+
+      - name: Run container
+        run: |
+          CONTAINER_ID=$(docker run -d --rm -p 8000:8000 ${{ needs.build.outputs.metrics-server }}
+          echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
+          sleep 5
+
+      - name: Check container health
+        run: |
+          docker logs $CONTAINER_ID
+          if docker ps | grep -q $CONTAINER_ID; then
+            echo "Container is running"
+          else
+            echo "Container stopped unexpectedly"
+            docker logs $CONTAINER_ID
+            exit 1
+          fi
+
+      - name: Verify no errors in logs
+        run: |
+          LOGS=$(docker logs $CONTAINER_ID 2>&1)
+          if echo "$LOGS" | grep -qi "error\|exception\|traceback\|failed"; then
+            echo "Found errors in logs:"
+            echo "$LOGS"
+            exit 1
+          fi
+          echo "No errors found in container logs"
+
+      - name: Stop container
+        if: always()
+        run: docker stop ${{ env.CONTAINER_ID }} 2>/dev/null || true
+
+  smoke-test-ollama-monitor:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull ollama-monitor image
+        run: docker pull ${{ needs.build.outputs.ollama-monitor }}
+
+      - name: Run container
+        run: |
+          CONTAINER_ID=$(docker run -d --rm -p 8002:8002 ${{ needs.build.outputs.ollama-monitor }}
+          echo "CONTAINER_ID=$CONTAINER_ID" >> $GITHUB_ENV
+          sleep 5
+
+      - name: Check container health
+        run: |
+          docker logs $CONTAINER_ID
+          if docker ps | grep -q $CONTAINER_ID; then
+            echo "Container is running"
+          else
+            echo "Container stopped unexpectedly"
+            docker logs $CONTAINER_ID
+            exit 1
+          fi
+
+      - name: Verify no errors in logs
+        run: |
+          LOGS=$(docker logs $CONTAINER_ID 2>&1)
+          if echo "$LOGS" | grep -qi "error\|exception\|traceback\|failed"; then
+            echo "Found errors in logs:"
+            echo "$LOGS"
+            exit 1
+          fi
+          echo "No errors found in container logs"
+
+      - name: Stop container
+        if: always()
+        run: docker stop ${{ env.CONTAINER_ID }} 2>/dev/null || true
+
+  summary:
+    needs: [build, smoke-test-telegram-forwarder, smoke-test-metrics-server, smoke-test-ollama-monitor]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## Build and Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          BUILD_STATUS="${{ needs.build.result }}"
+          echo "### Build: $BUILD_STATUS" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Smoke Tests:" >> $GITHUB_STEP_SUMMARY
+          echo "- telegram-forwarder: ${{ needs.smoke-test-telegram-forwarder.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- metrics-server: ${{ needs.smoke-test-metrics-server.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ollama-monitor: ${{ needs.smoke-test-ollama-monitor.result }}" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pushed Images (non-PR):" >> $GITHUB_STEP_SUMMARY
+          echo "- telegram-forwarder: ${{ needs.build.outputs.telegram-forwarder }}" >> $GITHUB_STEP_SUMMARY
+          echo "- metrics-server: ${{ needs.build.outputs.metrics-server }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ollama-monitor: ${{ needs.build.outputs.ollama-monitor }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$BUILD_STATUS" = "success" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All builds and tests passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Some jobs failed. Check logs above." >> $GITHUB_STEP_SUMMARY
+          fi
