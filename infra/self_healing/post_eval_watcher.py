@@ -41,11 +41,12 @@ def main(pidfile: str):
     p = Path(pidfile)
     wait_for_pid(p)
     # Run benchmark-learning-targets
-    cmd = ["python3", "-m", "nexus_alpha.cli", "benchmark-learning-targets", "--min-trades", "30"]
-    print("Running:", " ".join(cmd))
+    # Run safe retrain which includes benchmark + promote guard
+    cmd = ["python3", "infra/self_healing/safe_retrain.py", "--candidate", "/tmp/lightweight_candidate.pkl", "--promote", "data/checkpoints/lightweight_online_reward.pkl", "--min-trades", "30"]
+    print("Running safe retrain:", " ".join(cmd))
     subprocess.run(cmd)
-    # Trigger retrain watcher once (run it quickly to let it attempt a retrain)
-    cmd2 = ["python3", "-m", "nexus_alpha.cli", "run-retrain-watcher", "--interval", "3600"]
+    # Start the normal retrain watcher (background)
+    cmd2 = ["python3", "infra/self_healing/retrain_watcher.py", "--interval", "3600"]
     print("Starting retrain watcher (background):", " ".join(cmd2))
     subprocess.Popen(cmd2)
 
