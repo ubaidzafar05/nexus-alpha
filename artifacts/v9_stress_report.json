@@ -1,0 +1,4620 @@
+{
+    "summary": {
+        "status": "PASS",
+        "total_cycles": 288,
+        "violation_count": 0,
+        "max_observed_delta": 0.0,
+        "final_swarm_size": 8,
+        "report_time": "2026-04-15T03:00:38.227411"
+    },
+    "history": [
+        {
+            "cycle": 0,
+            "timestamp": "2026-04-14T18:04:50.779804",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 1,
+            "timestamp": "2026-04-14T18:05:05.953140",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 2,
+            "timestamp": "2026-04-14T18:05:20.611918",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 3,
+            "timestamp": "2026-04-14T18:05:39.016314",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 4,
+            "timestamp": "2026-04-14T18:06:08.140308",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 5,
+            "timestamp": "2026-04-14T18:07:03.057091",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 6,
+            "timestamp": "2026-04-14T18:07:32.053368",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 7,
+            "timestamp": "2026-04-14T18:08:02.347871",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 8,
+            "timestamp": "2026-04-14T18:08:32.248868",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 9,
+            "timestamp": "2026-04-14T18:09:07.232713",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 10,
+            "timestamp": "2026-04-14T18:09:53.716958",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 11,
+            "timestamp": "2026-04-14T18:10:42.718012",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 12,
+            "timestamp": "2026-04-14T18:11:34.538776",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 13,
+            "timestamp": "2026-04-14T18:12:06.674141",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 14,
+            "timestamp": "2026-04-14T18:13:03.475230",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 15,
+            "timestamp": "2026-04-14T18:13:59.312234",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 16,
+            "timestamp": "2026-04-14T18:15:25.033574",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 17,
+            "timestamp": "2026-04-14T18:16:16.371765",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 18,
+            "timestamp": "2026-04-14T18:17:16.341139",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 19,
+            "timestamp": "2026-04-14T18:17:44.873818",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 20,
+            "timestamp": "2026-04-14T18:17:53.644475",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 21,
+            "timestamp": "2026-04-14T18:18:03.016469",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 22,
+            "timestamp": "2026-04-14T18:18:12.865706",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 23,
+            "timestamp": "2026-04-14T18:18:21.391783",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 24,
+            "timestamp": "2026-04-14T18:18:30.310480",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 25,
+            "timestamp": "2026-04-14T18:18:39.643025",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 26,
+            "timestamp": "2026-04-14T18:18:47.992701",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 27,
+            "timestamp": "2026-04-14T18:18:56.547562",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 28,
+            "timestamp": "2026-04-14T18:19:07.546048",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 29,
+            "timestamp": "2026-04-14T18:19:16.315262",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 30,
+            "timestamp": "2026-04-14T18:19:26.433783",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 31,
+            "timestamp": "2026-04-14T18:19:36.667748",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 32,
+            "timestamp": "2026-04-14T18:19:45.713245",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 33,
+            "timestamp": "2026-04-14T18:19:54.477552",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 34,
+            "timestamp": "2026-04-14T18:20:04.921127",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 35,
+            "timestamp": "2026-04-14T18:20:20.601690",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 36,
+            "timestamp": "2026-04-14T18:20:50.623697",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 37,
+            "timestamp": "2026-04-14T18:21:05.452246",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 38,
+            "timestamp": "2026-04-14T18:21:25.134130",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 39,
+            "timestamp": "2026-04-14T18:21:36.181140",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 40,
+            "timestamp": "2026-04-14T18:21:54.401856",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 41,
+            "timestamp": "2026-04-14T18:22:29.223752",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 42,
+            "timestamp": "2026-04-14T18:22:43.600248",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 43,
+            "timestamp": "2026-04-14T18:22:55.978958",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 44,
+            "timestamp": "2026-04-14T18:23:10.228646",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 45,
+            "timestamp": "2026-04-14T18:23:24.960755",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 46,
+            "timestamp": "2026-04-14T18:23:50.947848",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 47,
+            "timestamp": "2026-04-14T18:24:13.017026",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 48,
+            "timestamp": "2026-04-14T18:24:30.771676",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 49,
+            "timestamp": "2026-04-14T18:24:49.962298",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 50,
+            "timestamp": "2026-04-14T18:25:08.442248",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 51,
+            "timestamp": "2026-04-14T18:25:27.460307",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 52,
+            "timestamp": "2026-04-14T18:25:50.320788",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 53,
+            "timestamp": "2026-04-14T18:26:12.385744",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 54,
+            "timestamp": "2026-04-14T18:26:34.660459",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 55,
+            "timestamp": "2026-04-14T18:33:06.340224",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 56,
+            "timestamp": "2026-04-14T18:33:35.263337",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 57,
+            "timestamp": "2026-04-14T18:33:47.567876",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 58,
+            "timestamp": "2026-04-14T18:34:01.148430",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 59,
+            "timestamp": "2026-04-14T18:34:18.702614",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 60,
+            "timestamp": "2026-04-14T18:34:30.915917",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 61,
+            "timestamp": "2026-04-14T18:34:48.052754",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 62,
+            "timestamp": "2026-04-14T18:35:05.881637",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 63,
+            "timestamp": "2026-04-14T18:35:41.560714",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 64,
+            "timestamp": "2026-04-14T18:36:41.198163",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 65,
+            "timestamp": "2026-04-14T18:38:11.455405",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 66,
+            "timestamp": "2026-04-14T18:39:07.067597",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 67,
+            "timestamp": "2026-04-14T18:41:46.557380",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 68,
+            "timestamp": "2026-04-14T18:43:15.695529",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 69,
+            "timestamp": "2026-04-14T18:44:42.981564",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 70,
+            "timestamp": "2026-04-14T18:45:37.737680",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 71,
+            "timestamp": "2026-04-14T18:46:23.315508",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 72,
+            "timestamp": "2026-04-14T18:47:26.608655",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 73,
+            "timestamp": "2026-04-14T18:48:29.676940",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 74,
+            "timestamp": "2026-04-14T18:49:38.348763",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 75,
+            "timestamp": "2026-04-14T18:50:58.003560",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 76,
+            "timestamp": "2026-04-14T18:51:42.218824",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 77,
+            "timestamp": "2026-04-14T18:52:21.433733",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 78,
+            "timestamp": "2026-04-14T18:52:47.007386",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 79,
+            "timestamp": "2026-04-14T19:06:13.996816",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 80,
+            "timestamp": "2026-04-14T19:31:22.821515",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 81,
+            "timestamp": "2026-04-14T19:44:00.281009",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 82,
+            "timestamp": "2026-04-14T19:44:49.504194",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 83,
+            "timestamp": "2026-04-14T19:45:31.584658",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 84,
+            "timestamp": "2026-04-14T19:46:06.468346",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 85,
+            "timestamp": "2026-04-14T19:46:50.943425",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 86,
+            "timestamp": "2026-04-14T19:47:09.363507",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 87,
+            "timestamp": "2026-04-14T19:47:18.941601",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 88,
+            "timestamp": "2026-04-14T19:47:29.751757",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 89,
+            "timestamp": "2026-04-14T19:47:42.994091",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 90,
+            "timestamp": "2026-04-14T19:47:52.742552",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 91,
+            "timestamp": "2026-04-14T19:48:00.346450",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 92,
+            "timestamp": "2026-04-14T19:48:06.909340",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 93,
+            "timestamp": "2026-04-14T19:48:13.168813",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 94,
+            "timestamp": "2026-04-14T19:48:19.568044",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 95,
+            "timestamp": "2026-04-14T19:48:26.606930",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 96,
+            "timestamp": "2026-04-14T19:48:58.186573",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 97,
+            "timestamp": "2026-04-14T19:49:29.720778",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 98,
+            "timestamp": "2026-04-14T19:50:25.718957",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 99,
+            "timestamp": "2026-04-14T19:50:50.959269",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 100,
+            "timestamp": "2026-04-14T19:51:11.872675",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 101,
+            "timestamp": "2026-04-14T19:51:19.674773",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 102,
+            "timestamp": "2026-04-14T19:51:28.468500",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 103,
+            "timestamp": "2026-04-14T19:51:38.476758",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 104,
+            "timestamp": "2026-04-14T19:51:48.401322",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 105,
+            "timestamp": "2026-04-14T19:51:55.339239",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 106,
+            "timestamp": "2026-04-14T19:52:05.194810",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 107,
+            "timestamp": "2026-04-14T19:52:15.078429",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 108,
+            "timestamp": "2026-04-14T19:52:22.111970",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 109,
+            "timestamp": "2026-04-14T19:52:29.178687",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 110,
+            "timestamp": "2026-04-14T19:52:36.824954",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 111,
+            "timestamp": "2026-04-14T19:52:44.737959",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 112,
+            "timestamp": "2026-04-14T19:52:52.966765",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 113,
+            "timestamp": "2026-04-14T19:53:01.573646",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 114,
+            "timestamp": "2026-04-14T19:53:10.505107",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 115,
+            "timestamp": "2026-04-14T19:53:17.679724",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 116,
+            "timestamp": "2026-04-14T19:53:24.606420",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 117,
+            "timestamp": "2026-04-14T19:53:32.970115",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 118,
+            "timestamp": "2026-04-14T19:53:39.367930",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 119,
+            "timestamp": "2026-04-14T19:53:45.480360",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 120,
+            "timestamp": "2026-04-14T19:53:54.651321",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 121,
+            "timestamp": "2026-04-14T19:54:04.420667",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 122,
+            "timestamp": "2026-04-14T19:54:15.566107",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 123,
+            "timestamp": "2026-04-14T19:54:25.649643",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 124,
+            "timestamp": "2026-04-14T19:54:37.895437",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 125,
+            "timestamp": "2026-04-14T19:54:51.310007",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 126,
+            "timestamp": "2026-04-14T19:55:04.506221",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 127,
+            "timestamp": "2026-04-14T19:55:15.770117",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 128,
+            "timestamp": "2026-04-14T19:55:28.417074",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 129,
+            "timestamp": "2026-04-14T19:55:37.363177",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 130,
+            "timestamp": "2026-04-14T19:55:47.735916",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 131,
+            "timestamp": "2026-04-14T19:56:04.193180",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 132,
+            "timestamp": "2026-04-14T19:56:28.364742",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 133,
+            "timestamp": "2026-04-14T19:56:50.713210",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 134,
+            "timestamp": "2026-04-14T19:57:27.405709",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 135,
+            "timestamp": "2026-04-14T19:57:53.748522",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 136,
+            "timestamp": "2026-04-14T19:58:40.257621",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 137,
+            "timestamp": "2026-04-14T19:59:08.416579",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 138,
+            "timestamp": "2026-04-14T19:59:50.931749",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 139,
+            "timestamp": "2026-04-14T20:00:25.853529",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 140,
+            "timestamp": "2026-04-14T20:00:43.738659",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 141,
+            "timestamp": "2026-04-14T20:00:54.915396",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 142,
+            "timestamp": "2026-04-14T20:01:14.827513",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 143,
+            "timestamp": "2026-04-14T20:01:31.379785",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 144,
+            "timestamp": "2026-04-14T20:01:44.939714",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 145,
+            "timestamp": "2026-04-14T20:01:57.904551",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 146,
+            "timestamp": "2026-04-14T20:02:46.053678",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 147,
+            "timestamp": "2026-04-14T20:03:19.356711",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 148,
+            "timestamp": "2026-04-14T20:03:46.598352",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 149,
+            "timestamp": "2026-04-14T20:04:11.350739",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 150,
+            "timestamp": "2026-04-14T20:04:30.210816",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 151,
+            "timestamp": "2026-04-14T20:05:00.787951",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 152,
+            "timestamp": "2026-04-14T20:05:41.041447",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 153,
+            "timestamp": "2026-04-14T20:06:46.370948",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 154,
+            "timestamp": "2026-04-14T20:07:38.082817",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 155,
+            "timestamp": "2026-04-14T20:08:14.863387",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 156,
+            "timestamp": "2026-04-14T20:08:40.356023",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 157,
+            "timestamp": "2026-04-14T20:09:06.580022",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 158,
+            "timestamp": "2026-04-14T20:09:29.619024",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 159,
+            "timestamp": "2026-04-14T20:09:49.490096",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 160,
+            "timestamp": "2026-04-14T20:10:26.546090",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 161,
+            "timestamp": "2026-04-14T20:10:51.993087",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 162,
+            "timestamp": "2026-04-14T20:11:31.395464",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 163,
+            "timestamp": "2026-04-14T20:12:14.826565",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 164,
+            "timestamp": "2026-04-14T20:13:09.515689",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 165,
+            "timestamp": "2026-04-14T20:14:01.016607",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 166,
+            "timestamp": "2026-04-14T20:14:53.515935",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 167,
+            "timestamp": "2026-04-14T20:15:55.101652",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 168,
+            "timestamp": "2026-04-14T20:16:45.355305",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 169,
+            "timestamp": "2026-04-14T20:17:34.608802",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 170,
+            "timestamp": "2026-04-14T20:18:11.642106",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 171,
+            "timestamp": "2026-04-14T20:19:22.327071",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 172,
+            "timestamp": "2026-04-14T20:20:23.346142",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 173,
+            "timestamp": "2026-04-14T20:20:51.999371",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 174,
+            "timestamp": "2026-04-14T20:21:16.177957",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 175,
+            "timestamp": "2026-04-14T20:22:02.396767",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 176,
+            "timestamp": "2026-04-14T20:22:48.958878",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 177,
+            "timestamp": "2026-04-14T20:23:14.988319",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 178,
+            "timestamp": "2026-04-14T20:23:35.554617",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 179,
+            "timestamp": "2026-04-14T20:23:53.344660",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 180,
+            "timestamp": "2026-04-14T20:24:07.223345",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 181,
+            "timestamp": "2026-04-14T20:24:28.755739",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 182,
+            "timestamp": "2026-04-14T20:24:56.233774",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 183,
+            "timestamp": "2026-04-14T20:25:26.050896",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 184,
+            "timestamp": "2026-04-14T20:25:54.555793",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 185,
+            "timestamp": "2026-04-14T20:26:23.880325",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 186,
+            "timestamp": "2026-04-14T20:26:59.062844",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 187,
+            "timestamp": "2026-04-14T20:27:20.644248",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 188,
+            "timestamp": "2026-04-14T20:27:37.879004",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 189,
+            "timestamp": "2026-04-14T20:28:01.359573",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 190,
+            "timestamp": "2026-04-14T20:28:21.451185",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 191,
+            "timestamp": "2026-04-14T20:28:48.854838",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 192,
+            "timestamp": "2026-04-14T20:29:16.792316",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 193,
+            "timestamp": "2026-04-14T20:29:48.068750",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 194,
+            "timestamp": "2026-04-14T20:30:06.086480",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 195,
+            "timestamp": "2026-04-14T20:30:22.782911",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 196,
+            "timestamp": "2026-04-14T20:30:42.786592",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 197,
+            "timestamp": "2026-04-14T20:30:54.804664",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 198,
+            "timestamp": "2026-04-14T20:31:16.436211",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 199,
+            "timestamp": "2026-04-14T20:31:42.175612",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 200,
+            "timestamp": "2026-04-14T20:32:00.911303",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 201,
+            "timestamp": "2026-04-14T20:32:21.556466",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 202,
+            "timestamp": "2026-04-14T20:32:42.091691",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 203,
+            "timestamp": "2026-04-14T20:32:56.018048",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 204,
+            "timestamp": "2026-04-14T20:33:20.343134",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 205,
+            "timestamp": "2026-04-14T20:33:47.264924",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 206,
+            "timestamp": "2026-04-14T20:34:11.043769",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 207,
+            "timestamp": "2026-04-14T20:34:41.581600",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 208,
+            "timestamp": "2026-04-14T20:35:01.024964",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 209,
+            "timestamp": "2026-04-14T20:35:22.634380",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 210,
+            "timestamp": "2026-04-14T20:35:44.689144",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 211,
+            "timestamp": "2026-04-14T20:35:57.394341",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 212,
+            "timestamp": "2026-04-14T20:36:14.473589",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 213,
+            "timestamp": "2026-04-14T20:36:37.382458",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 214,
+            "timestamp": "2026-04-14T20:36:50.843810",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 215,
+            "timestamp": "2026-04-14T20:37:08.786807",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 216,
+            "timestamp": "2026-04-14T20:37:31.491976",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 217,
+            "timestamp": "2026-04-14T20:37:46.854513",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 218,
+            "timestamp": "2026-04-14T20:38:07.259218",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 219,
+            "timestamp": "2026-04-14T20:38:30.840147",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 220,
+            "timestamp": "2026-04-14T20:38:50.772281",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 221,
+            "timestamp": "2026-04-14T20:39:09.476327",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 222,
+            "timestamp": "2026-04-14T20:39:29.984636",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 223,
+            "timestamp": "2026-04-14T20:39:44.270004",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 224,
+            "timestamp": "2026-04-14T20:40:06.474265",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 225,
+            "timestamp": "2026-04-14T20:40:29.216143",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 226,
+            "timestamp": "2026-04-14T20:40:44.379571",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 227,
+            "timestamp": "2026-04-14T20:41:05.649424",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 228,
+            "timestamp": "2026-04-14T20:41:20.640526",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 229,
+            "timestamp": "2026-04-14T20:41:34.919813",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 230,
+            "timestamp": "2026-04-14T20:41:54.127359",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 231,
+            "timestamp": "2026-04-14T20:42:09.492415",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 232,
+            "timestamp": "2026-04-14T20:42:28.782613",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 233,
+            "timestamp": "2026-04-14T20:42:49.017742",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 234,
+            "timestamp": "2026-04-14T20:43:06.909917",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 235,
+            "timestamp": "2026-04-14T20:43:37.265041",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 236,
+            "timestamp": "2026-04-14T20:44:05.314407",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 237,
+            "timestamp": "2026-04-14T20:44:28.561242",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 238,
+            "timestamp": "2026-04-14T20:44:56.154645",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 239,
+            "timestamp": "2026-04-14T20:45:10.162658",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 240,
+            "timestamp": "2026-04-14T20:45:37.012365",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 241,
+            "timestamp": "2026-04-14T20:46:02.042547",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 242,
+            "timestamp": "2026-04-14T20:46:24.620425",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 243,
+            "timestamp": "2026-04-14T20:46:50.057023",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 244,
+            "timestamp": "2026-04-14T20:47:06.965082",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 245,
+            "timestamp": "2026-04-14T20:47:29.232857",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 246,
+            "timestamp": "2026-04-14T20:47:51.996279",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 247,
+            "timestamp": "2026-04-14T20:48:08.543881",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 248,
+            "timestamp": "2026-04-14T20:48:32.476756",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 249,
+            "timestamp": "2026-04-14T20:48:49.347641",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 250,
+            "timestamp": "2026-04-14T20:49:09.684415",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 251,
+            "timestamp": "2026-04-14T20:49:38.268504",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 252,
+            "timestamp": "2026-04-14T20:49:58.476597",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 253,
+            "timestamp": "2026-04-14T20:50:29.979350",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 254,
+            "timestamp": "2026-04-14T20:51:04.545314",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 255,
+            "timestamp": "2026-04-14T20:51:31.114602",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 256,
+            "timestamp": "2026-04-14T20:52:04.505319",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 257,
+            "timestamp": "2026-04-14T20:52:23.102611",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 258,
+            "timestamp": "2026-04-14T20:52:52.358324",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 259,
+            "timestamp": "2026-04-14T20:53:23.261437",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 260,
+            "timestamp": "2026-04-14T20:53:52.986186",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 261,
+            "timestamp": "2026-04-14T20:54:16.874080",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 262,
+            "timestamp": "2026-04-14T20:54:53.315581",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 263,
+            "timestamp": "2026-04-14T20:55:09.398803",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 264,
+            "timestamp": "2026-04-14T20:55:28.990133",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 265,
+            "timestamp": "2026-04-14T20:56:12.363153",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 266,
+            "timestamp": "2026-04-14T20:57:38.742575",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 267,
+            "timestamp": "2026-04-14T20:58:21.423658",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 268,
+            "timestamp": "2026-04-14T21:14:40.020884",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 269,
+            "timestamp": "2026-04-14T21:15:12.748098",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 270,
+            "timestamp": "2026-04-14T21:26:24.834075",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 271,
+            "timestamp": "2026-04-14T22:37:05.420002",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 272,
+            "timestamp": "2026-04-14T22:37:39.737364",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 273,
+            "timestamp": "2026-04-14T22:54:13.903876",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 274,
+            "timestamp": "2026-04-14T22:55:22.507814",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 275,
+            "timestamp": "2026-04-14T22:57:34.772023",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 276,
+            "timestamp": "2026-04-14T23:13:05.579423",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 277,
+            "timestamp": "2026-04-14T23:28:51.320773",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 278,
+            "timestamp": "2026-04-14T23:44:50.286695",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 279,
+            "timestamp": "2026-04-14T23:45:15.015380",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 280,
+            "timestamp": "2026-04-14T23:59:36.229766",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 281,
+            "timestamp": "2026-04-15T00:14:26.628071",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 282,
+            "timestamp": "2026-04-15T00:41:38.028128",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 283,
+            "timestamp": "2026-04-15T00:57:35.916299",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 284,
+            "timestamp": "2026-04-15T00:59:40.220933",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 285,
+            "timestamp": "2026-04-15T01:16:54.188570",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 286,
+            "timestamp": "2026-04-15T01:51:57.301835",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        },
+        {
+            "cycle": 287,
+            "timestamp": "2026-04-15T02:23:05.126635",
+            "clusters": {
+                "layer1": {
+                    "delta": 0.0,
+                    "num_agents": 3,
+                    "num_hedges": 0
+                },
+                "alts": {
+                    "delta": 0.0,
+                    "num_agents": 0,
+                    "num_hedges": 0
+                }
+            }
+        }
+    ]
+}

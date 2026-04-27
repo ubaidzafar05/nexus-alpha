@@ -55,6 +55,9 @@ def main() -> int:
     if args.check_network:
         failures.extend(run_network_checks())
 
+    # New Logic Checks
+    failures.extend(validate_core_modules())
+
     if warnings:
         print("WARNINGS:")
         for warning in warnings:
@@ -143,6 +146,41 @@ def parse_url_host_port(value: str, default_port: int) -> tuple[str, int, str]:
     normalized = value.replace("postgresql+asyncpg://", "postgresql://", 1)
     parsed = urlparse(normalized)
     return parsed.hostname or "", parsed.port or default_port, parsed.scheme or "url"
+
+
+def validate_core_modules() -> list[str]:
+    """Verify that core trading modules are importable and functional."""
+    failures: list[str] = []
+    
+    # 1. Signal Engine
+    try:
+        from nexus_alpha.signals.signal_engine import SignalFusionEngine
+        engine = SignalFusionEngine()
+        engine.register_defaults()
+        if len(engine.generators) < 5:
+            failures.append("signal_engine:incomplete_defaults")
+    except Exception as e:
+        failures.append(f"signal_engine:import_failed:{str(e)}")
+
+    # 2. Execution Engine (RL check)
+    try:
+        from nexus_alpha.execution.execution_engine import OrderManagementSystem
+        oms = OrderManagementSystem()
+        if oms._rl_agent is None:
+            failures.append("execution_engine:rl_agent_missing")
+    except Exception as e:
+        failures.append(f"execution_engine:import_failed:{str(e)}")
+
+    # 3. Risk System
+    try:
+        from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem
+        cb = CircuitBreakerSystem()
+        if not cb.config.circuit_breaker_enabled:
+            failures.append("risk_system:circuit_breaker_disabled_in_config")
+    except Exception as e:
+        failures.append(f"risk_system:import_failed:{str(e)}")
+
+    return failures
 
 
 def tcp_check(host: str, port: int, timeout: float) -> bool:

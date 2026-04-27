@@ -17,6 +17,7 @@ including transaction costs and slippage.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
+from nexus_alpha.learning.entry_features import build_augmented_feature_vector
 from nexus_alpha.learning.historical_data import build_features, load_ohlcv
 from nexus_alpha.learning.offline_trainer import LightweightPredictor
 from nexus_alpha.signals.signal_engine import SignalFusionEngine
@@ -35,22 +37,38 @@ logger = logging.getLogger(__name__)
 
 # ── Constants (mirror trading_loop.py) ────────────────────────────────────────
 
-MIN_SIGNAL_CONFIDENCE = 0.40
+MIN_SIGNAL_CONFIDENCE = 0.45
 MAX_OPEN_POSITIONS = 3
 SL_FLOOR_PCT = 0.025   # 2.5% minimum stop-loss
 SL_CAP_PCT = 0.06      # 6% maximum stop-loss
 SL_ATR_MULT = 3.0
 TP_ATR_MULT = 8.0
 TRAILING_TRIGGER_PCT = 0.04  # 4% profit triggers trailing
-TRAILING_LOCK_PCT = 0.50
+TRAIL_ATR_MULT = 2.5
 FEE_PCT = 0.00075           # Binance discounted/maker-like fee
 SLIPPAGE_PCT = 0.0005        # 0.05% slippage per trade
+MIN_VOLUME_RATIO = 0.5
+MOMENTUM_LOOKBACK = 5
+MAX_CLUSTER_POSITIONS = 2
+
+CORRELATION_CLUSTERS = {
+    "layer1": {"BTCUSDT", "ETHUSDT", "SOLUSDT"},
+    "altcoin": {"BNBUSDT", "ADAUSDT"},
+}
+
+REGIME_CONFIDENCE = {
+    "strong_trend": 1.2,
+    "weak_trend": 1.0,
+    "range_bound": 0.7,
+    "high_volatility": 0.6,
+    "unknown": 0.9,
+}
 
 
 @dataclass
 class StrategyParams:
     """Tunable strategy parameters — pass to HistoricalBacktester."""
-    min_confidence: float = 0.40
+    min_confidence: float = 0.45
     max_positions: int = 3
     sl_atr_mult: float = 3.0
     sl_floor_pct: float = 0.025
@@ -58,7 +76,7 @@ class StrategyParams:
     tp_atr_mult: float = 8.0
     min_tp_sl_ratio: float = 2.0      # TP must be ≥ N × SL
     trailing_trigger: float = 0.04
-    trailing_lock: float = 0.50
+    trail_atr_mult: float = 2.5
     breakeven_trigger: float = 0.02
     time_exit_bars: int = 120
     time_exit_loss_bars: int = 60
@@ -90,6 +108,11 @@ class BacktestTrade:
     holding_bars: int = 0
     confidence: float = 0.0
     ml_agreed: bool = False
+    signal_direction: float = 0.0
+    feature_vector: list[float] = field(default_factory=list)
+    regime: str = "unknown"
+    entry_context: dict[str, object] = field(default_factory=dict)
+    exit_context: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -157,9 +180,11 @@ class HistoricalBacktester:
         # Signal engine (same as live)
         self.signal_engine = SignalFusionEngine()
         self.signal_engine.register_defaults()
+        self._signal_total_weight = sum(abs(w) for w in self.signal_engine.signal_weights.values()) or 1.0
 
         # ML models
         self.ml_models: dict[str, LightweightPredictor] = {}
+        self._feature_columns: list[str] = []
         self._load_ml_models()
 
     def _load_ml_models(self) -> None:
@@ -167,11 +192,153 @@ class HistoricalBacktester:
         for sym in self.symbols:
             safe = sym.replace("/", "_")
             exchange_sym = sym.replace("/", "")  # BTCUSDT
-            predictor = LightweightPredictor(target_horizon="target_1h")
-            path = ckpt_dir / f"lightweight_{safe}_1h.pkl"
-            if predictor.load(path):
-                self.ml_models[exchange_sym] = predictor
-        logger.info("backtest_ml_models_loaded", count=len(self.ml_models))
+            for timeframe in ("1h", "4h", "1d"):
+                predictor = LightweightPredictor(target_horizon="target_1h")
+                path = ckpt_dir / f"lightweight_{safe}_{timeframe}.pkl"
+                if predictor.load(path):
+                    key = exchange_sym if timeframe == "1h" else f"{exchange_sym}_{timeframe}"
+                    self.ml_models[key] = predictor
+        logger.info("backtest_ml_models_loaded count=%s", len(self.ml_models))
+
+    def _cluster_for_symbol(self, symbol: str) -> str | None:
+        for cluster_name, members in CORRELATION_CLUSTERS.items():
+            if symbol in members:
+                return cluster_name
+        return None
+
+    def _cluster_position_count(self, symbol: str) -> int:
+        cluster = self._cluster_for_symbol(symbol)
+        if cluster is None:
+            return 0
+        members = CORRELATION_CLUSTERS[cluster]
+        return sum(1 for pos in self.positions if pos.symbol in members)
+
+    def _prepare_symbol_cache(
+        self,
+        df: pd.DataFrame,
+        exchange_sym: str,
+        warmup: int,
+    ) -> pd.DataFrame:
+        cache = df.copy().reset_index(drop=True)
+        cache["timestamp"] = pd.to_datetime(cache["timestamp"])
+        close = pd.to_numeric(cache["close"], errors="coerce")
+        high = pd.to_numeric(cache["high"], errors="coerce")
+        low = pd.to_numeric(cache["low"], errors="coerce")
+        volume = pd.to_numeric(cache["volume"], errors="coerce")
+
+        prev_close = close.shift(1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        cache["atr"] = tr.rolling(14).mean()
+        cache["ema50"] = close.ewm(span=50, adjust=False).mean()
+        cache["momentum_return"] = close / close.shift(MOMENTUM_LOOKBACK - 1) - 1
+
+        avg_20 = volume.shift(5).rolling(20).mean()
+        recent_5 = volume.rolling(5).mean()
+        cache["volume_ok"] = ((recent_5 / avg_20.replace(0, np.nan)) >= MIN_VOLUME_RATIO).fillna(True)
+
+        vol_avg = volume.rolling(20).mean()
+        vol_score = (volume / vol_avg.replace(0, np.nan)).clip(upper=2.0).fillna(1.0) / 2.0
+        returns = close.pct_change()
+        vol_24h = returns.rolling(24).std() * 100
+        vol_quality = pd.Series(1.0, index=cache.index, dtype=float)
+        vol_quality = vol_quality.mask(vol_24h < 0.3, 0.3)
+        vol_quality = vol_quality.mask(vol_24h > 5.0, 0.4)
+        mid_mask = (vol_24h >= 0.3) & (vol_24h <= 5.0)
+        vol_quality.loc[mid_mask] = 1.0 - (vol_24h.loc[mid_mask] - 1.5).abs() / 5.0
+        spread_pct = ((high - low) / close.replace(0, np.nan)).fillna(0.1)
+        spread_score = (1.0 - spread_pct * 20).clip(lower=0.0, upper=1.0)
+        cache["pair_quality"] = (vol_score * 0.4 + vol_quality * 0.35 + spread_score * 0.25).clip(0.0, 1.0)
+
+        close_24 = close.shift(24)
+        cache["trend24"] = np.where(close_24 > 0, close / close_24 - 1, 0.0)
+        direction_sign = np.sign(close.pct_change().fillna(0.0))
+        cache["directional_persistence_24"] = direction_sign.rolling(24, min_periods=1).mean().clip(-1.0, 1.0)
+        vol_short = close.pct_change().rolling(24, min_periods=8).std()
+        vol_long = close.pct_change().rolling(168, min_periods=24).std()
+        vol_ratio = (vol_short / vol_long.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan)
+        cache["volatility_compression"] = (1.0 - vol_ratio).clip(-1.0, 1.0).fillna(0.0)
+
+        all_signals = self.signal_engine.compute_all(cache)
+        weighted_sum = pd.Series(0.0, index=cache.index, dtype=float)
+        for name, signal_series in all_signals.items():
+            series = pd.to_numeric(signal_series, errors="coerce").fillna(0.0)
+            rolling_mean = series.rolling(warmup, min_periods=warmup).mean()
+            rolling_std = series.rolling(warmup, min_periods=warmup).std(ddof=0)
+            normalized = ((series - rolling_mean) / rolling_std.replace(0, np.nan)).clip(-3, 3) / 3
+            weighted_sum += self.signal_engine.signal_weights.get(name, 1.0) * normalized.fillna(0.0)
+            cache[f"signal_{name}"] = normalized.fillna(0.0)
+        cache["fused_direction"] = (weighted_sum / self._signal_total_weight).clip(-1.0, 1.0)
+        cache["fused_confidence"] = cache["fused_direction"].abs().clip(0.0, 1.0)
+
+        features = build_features(cache)
+        feature_cols = [c for c in features.columns if not c.startswith("target_")]
+        if feature_cols and not self._feature_columns:
+            self._feature_columns = list(feature_cols)
+        if feature_cols:
+            for col in feature_cols:
+                cache[col] = 0.0
+            cache.loc[features.index, feature_cols] = features[feature_cols].astype(float).values
+        cache["ml_signal"] = 0.0
+        cache["ml_confidence"] = 0.0
+        cache["ml_signal_4h"] = 0.0
+        cache["ml_signal_1d"] = 0.0
+        if len(features) > 0:
+            X = features[feature_cols].values.astype(np.float32)
+            for key, signal_col, conf_col in (
+                (exchange_sym, "ml_signal", "ml_confidence"),
+                (f"{exchange_sym}_4h", "ml_signal_4h", None),
+                (f"{exchange_sym}_1d", "ml_signal_1d", None),
+            ):
+                predictor = self.ml_models.get(key)
+                if predictor is None:
+                    continue
+                signals, confidences = predictor.predict_batch(X)
+                cache.loc[features.index, signal_col] = signals
+                if conf_col is not None:
+                    cache.loc[features.index, conf_col] = confidences
+
+        cache["ready"] = False
+        cache.loc[warmup - 1 :, "ready"] = True
+        return cache.set_index("timestamp", drop=False)
+
+    def _prepare_regime_series(self, ref_cache: pd.DataFrame) -> pd.Series:
+        close = pd.to_numeric(ref_cache["close"], errors="coerce")
+        returns = close.pct_change()
+        vol_recent = returns.rolling(24).std()
+        vol_long = returns.rolling(168).std()
+        vol_ratio = (vol_recent / vol_long.replace(0, np.nan)).fillna(1.0)
+        sma20 = close.rolling(20).mean()
+        sma50 = close.rolling(50).mean()
+        trend_strength = ((sma20 - sma50).abs() / sma50.replace(0, np.nan)).fillna(0.0)
+        regime = pd.Series("unknown", index=ref_cache.index, dtype=object)
+        regime.loc[trend_strength > 0.01] = "weak_trend"
+        regime.loc[trend_strength > 0.03] = "strong_trend"
+        regime.loc[vol_ratio > 1.5] = "high_volatility"
+        return regime.map(lambda name: REGIME_CONFIDENCE.get(str(name), 0.9)).fillna(0.9)
+
+    def _regime_name_from_multiplier(self, multiplier: float) -> str:
+        for name, value in REGIME_CONFIDENCE.items():
+            if abs(value - multiplier) < 1e-9:
+                return name
+        return "unknown"
+
+    def _row_feature_vector(self, row: pd.Series) -> list[float]:
+        if not self._feature_columns:
+            return []
+        vector: list[float] = []
+        for col in self._feature_columns:
+            value = row.get(col, 0.0)
+            if pd.isna(value):
+                value = 0.0
+            vector.append(float(value))
+        return vector
 
     def _nav(self, current_prices: dict[str, float]) -> float:
         """Compute net asset value."""
@@ -259,8 +426,162 @@ class HistoricalBacktester:
         except Exception:
             return None
 
+    def _multi_timeframe_alignment(
+        self,
+        symbol: str,
+        features_df: pd.DataFrame,
+        direction_1h: float,
+    ) -> float:
+        scores = [1.0]
+        if len(features_df) == 0:
+            return 1.0
+        try:
+            feature_cols = [c for c in features_df.columns if not c.startswith("target_")]
+            last_row = features_df[feature_cols].iloc[-1].values.astype(np.float32)
+        except Exception:
+            return 1.0
+
+        predictor_4h = self.ml_models.get(f"{symbol}_4h")
+        if predictor_4h:
+            try:
+                pred = predictor_4h.predict(last_row)
+                if abs(pred.get("signal", 0.0)) > 0.01:
+                    scores.append(1.0 if (pred["signal"] > 0) == (direction_1h > 0) else 0.0)
+            except Exception:
+                pass
+
+        predictor_1d = self.ml_models.get(f"{symbol}_1d")
+        if predictor_1d:
+            try:
+                pred = predictor_1d.predict(last_row)
+                if abs(pred.get("signal", 0.0)) > 0.01:
+                    scores.append(1.0 if (pred["signal"] > 0) == (direction_1h > 0) else 0.0)
+            except Exception:
+                pass
+
+        close = pd.to_numeric(features_df.get("close"), errors="coerce")
+        if len(close) > 24 and close.iloc[-24] > 0:
+            trend_24h = close.iloc[-1] / close.iloc[-24] - 1
+            scores.append(1.0 if (trend_24h > 0) == (direction_1h > 0) else 0.3)
+
+        return sum(scores) / len(scores)
+
+    def _multi_timeframe_alignment_from_row(self, row: pd.Series, direction_1h: float) -> float:
+        scores = [1.0]
+        ml_4h = float(row.get("ml_signal_4h", 0.0))
+        if abs(ml_4h) > 0.01:
+            scores.append(1.0 if (ml_4h > 0) == (direction_1h > 0) else 0.0)
+        ml_1d = float(row.get("ml_signal_1d", 0.0))
+        if abs(ml_1d) > 0.01:
+            scores.append(1.0 if (ml_1d > 0) == (direction_1h > 0) else 0.0)
+        trend_24h = float(row.get("trend24", 0.0))
+        scores.append(1.0 if (trend_24h > 0) == (direction_1h > 0) else 0.3)
+        return sum(scores) / len(scores)
+
+    def _volume_confirms(self, window: pd.DataFrame) -> bool:
+        if len(window) < 25:
+            return True
+        try:
+            vol = pd.to_numeric(window["volume"], errors="coerce")
+            avg_20 = vol.iloc[-25:-5].mean()
+            recent_5 = vol.iloc[-5:].mean()
+            if avg_20 <= 0:
+                return True
+            return (recent_5 / avg_20) >= MIN_VOLUME_RATIO
+        except Exception:
+            return True
+
+    def _momentum_confirms(self, window: pd.DataFrame, direction: float) -> bool:
+        if len(window) < MOMENTUM_LOOKBACK + 1:
+            return True
+        try:
+            close = pd.to_numeric(window["close"], errors="coerce")
+            recent_return = close.iloc[-1] / close.iloc[-MOMENTUM_LOOKBACK] - 1
+            if direction > 0 and recent_return < -0.03:
+                return False
+            if direction < 0 and recent_return > 0.03:
+                return False
+            return True
+        except Exception:
+            return True
+
+    def _pair_quality_score(self, window: pd.DataFrame) -> float:
+        if len(window) < 30:
+            return 0.5
+        close = pd.to_numeric(window["close"], errors="coerce")
+        high = pd.to_numeric(window["high"], errors="coerce")
+        low = pd.to_numeric(window["low"], errors="coerce")
+        volume = pd.to_numeric(window["volume"], errors="coerce")
+
+        vol_avg = volume.rolling(20).mean().iloc[-1]
+        vol_now = volume.iloc[-1]
+        vol_score = min(vol_now / vol_avg, 2.0) / 2.0 if vol_avg > 0 else 0.5
+
+        returns = close.pct_change().dropna()
+        vol_24h = returns.tail(24).std() * 100 if len(returns) >= 24 else 1.0
+        if vol_24h < 0.3:
+            vol_quality = 0.3
+        elif vol_24h > 5.0:
+            vol_quality = 0.4
+        else:
+            vol_quality = 1.0 - abs(vol_24h - 1.5) / 5.0
+
+        spread_pct = (high.iloc[-1] - low.iloc[-1]) / close.iloc[-1] if close.iloc[-1] > 0 else 0.1
+        spread_score = max(0.0, 1.0 - spread_pct * 20)
+
+        quality = vol_score * 0.4 + vol_quality * 0.35 + spread_score * 0.25
+        return round(max(0.0, min(quality, 1.0)), 3)
+
+    def _detect_regime(self, ref_window: pd.DataFrame) -> str:
+        if len(ref_window) < 50:
+            return "unknown"
+        close = pd.to_numeric(ref_window["close"], errors="coerce")
+        returns = close.pct_change().dropna()
+        if len(returns) < 30:
+            return "unknown"
+        vol_recent = returns.tail(24).std()
+        vol_long = returns.tail(168).std() if len(returns) >= 168 else vol_recent
+        vol_ratio = vol_recent / vol_long if vol_long > 0 else 1.0
+        sma20 = close.rolling(20).mean().iloc[-1]
+        sma50 = close.rolling(50).mean().iloc[-1]
+        trend_strength = abs(sma20 - sma50) / sma50 if sma50 > 0 else 0.0
+        if vol_ratio > 1.5:
+            return "high_volatility"
+        if trend_strength > 0.03:
+            return "strong_trend"
+        if trend_strength > 0.01:
+            return "weak_trend"
+        return "range_bound"
+
+    def _regime_confidence_multiplier(self, ref_window: pd.DataFrame) -> float:
+        return REGIME_CONFIDENCE.get(self._detect_regime(ref_window), 0.9)
+
+    def _arbitrate_signals(self, signals: list[dict]) -> list[dict]:
+        if not signals:
+            return []
+        scored = []
+        for sig in signals:
+            composite = abs(sig["direction"]) * sig["confidence"] * sig["pair_quality"]
+            scored.append((composite, sig))
+        scored.sort(key=lambda item: item[0], reverse=True)
+
+        cluster_direction: dict[str, float] = {}
+        accepted: list[dict] = []
+        for _, sig in scored:
+            cluster = self._cluster_for_symbol(sig["symbol"]) or sig["symbol"]
+            if cluster in cluster_direction:
+                if (sig["direction"] > 0) != (cluster_direction[cluster] > 0):
+                    continue
+            else:
+                cluster_direction[cluster] = sig["direction"]
+            accepted.append(sig)
+        return accepted
+
     def _check_exits(
-        self, bar: pd.Series, current_prices: dict[str, float],
+        self,
+        bar: pd.Series,
+        current_prices: dict[str, float],
+        current_atrs: dict[str, float],
     ) -> None:
         """Check SL/TP/trailing for all open positions."""
         to_close = []
@@ -268,6 +589,7 @@ class HistoricalBacktester:
             price = current_prices.get(pos.symbol, pos.entry_price)
             high = float(bar.get(f"high_{pos.symbol}", price))
             low = float(bar.get(f"low_{pos.symbol}", price))
+            atr = float(current_atrs.get(pos.symbol, 0.0))
 
             pos.holding_bars += 1
 
@@ -291,15 +613,20 @@ class HistoricalBacktester:
                 else:
                     pos.stop_loss = min(pos.stop_loss, pos.entry_price * 0.999)
 
-            # Trailing stop update
-            if pnl_pct > self.params.trailing_trigger:
-                locked_profit = pos.peak_favorable * self.params.trailing_lock
+            # Live parity: ATR-based progressive trailing from peak/trough, not
+            # a fixed fraction of peak profit.
+            if pnl_pct >= self.params.trailing_trigger and atr > 0:
+                trail_dist = self.params.trail_atr_mult * atr
                 if pos.side == "buy":
-                    trail_sl = pos.entry_price * (1 + locked_profit)
+                    peak_price = getattr(pos, "_peak_price", high)
+                    pos._peak_price = max(peak_price, high)
+                    trail_sl = pos._peak_price - trail_dist
                     if trail_sl > pos.stop_loss:
                         pos.stop_loss = trail_sl
                 else:
-                    trail_sl = pos.entry_price * (1 - locked_profit)
+                    trough_price = getattr(pos, "_trough_price", low)
+                    pos._trough_price = min(trough_price, low)
+                    trail_sl = pos._trough_price + trail_dist
                     if trail_sl < pos.stop_loss:
                         pos.stop_loss = trail_sl
 
@@ -384,6 +711,7 @@ class HistoricalBacktester:
 
         # Load all symbol data
         all_data: dict[str, pd.DataFrame] = {}
+        all_cache: dict[str, pd.DataFrame] = {}
         for sym in self.symbols:
             try:
                 df = load_ohlcv(sym, timeframe)
@@ -420,6 +748,10 @@ class HistoricalBacktester:
         self.total_fees = 0.0
 
         warmup = 300  # bars needed before features are valid (200 indicator lookback + buffer)
+        for sym, df in all_data.items():
+            exchange_sym = sym.replace("/", "")
+            all_cache[sym] = self._prepare_symbol_cache(df, exchange_sym, warmup)
+
         n_bars = len(timeline)
         print(f"📊 Backtesting {n_bars} bars from {start_date} to {end_date}")
         print(f"   Symbols: {', '.join(all_data.keys())}")
@@ -432,44 +764,58 @@ class HistoricalBacktester:
         print()
 
         last_exit_bar: dict[str, int] = {}  # symbol → bar index of last exit
+        ref_cache = all_cache.get("BTC/USDT", all_cache[ref_sym])
+        regime_mult_series = self._prepare_regime_series(ref_cache)
 
         for i, ts in enumerate(timeline):
             current_prices: dict[str, float] = {}
+            current_atrs: dict[str, float] = {}
 
             # Build multi-column bar for exit checks
             bar_data = {}
 
             for sym in all_data:
-                df = all_data[sym]
-                # Get all bars up to and including current timestamp
-                mask = df["timestamp"] <= ts
-                window = df[mask]
-
-                if len(window) < warmup:
+                cache = all_cache[sym]
+                if ts not in cache.index:
+                    continue
+                row = cache.loc[ts]
+                if not bool(row.get("ready", False)):
                     continue
 
-                close_price = float(window.iloc[-1]["close"])
+                close_price = float(row["close"])
                 exchange_sym = sym.replace("/", "")
                 current_prices[exchange_sym] = close_price
+                current_atrs[exchange_sym] = float(row.get("atr", 0.0) or 0.0)
+                bar_data[f"pair_quality_{exchange_sym}"] = float(row.get("pair_quality", 0.5) or 0.5)
 
-                bar_data[f"high_{exchange_sym}"] = float(window.iloc[-1]["high"])
-                bar_data[f"low_{exchange_sym}"] = float(window.iloc[-1]["low"])
+                bar_data[f"high_{exchange_sym}"] = float(row["high"])
+                bar_data[f"low_{exchange_sym}"] = float(row["low"])
+
+            regime_mult = float(regime_mult_series.get(ts, 0.9))
 
             # 1. Check exits on existing positions
             bar_series = pd.Series(bar_data)
-            self._check_exits(bar_series, current_prices)
+            self._check_exits(bar_series, current_prices, current_atrs)
             # Set exit times and record cooldowns
             for t in self.closed_trades:
                 if t.exit_time is None:
                     t.exit_time = ts
                     last_exit_bar[t.symbol] = i
+                    t.exit_context = {
+                        "exit_reason": t.exit_reason,
+                        "regime_at_exit": self._regime_name_from_multiplier(regime_mult),
+                        "pair_quality_at_exit": float(bar_series.get(f"pair_quality_{t.symbol}", 0.5)),
+                        "holding_bars": t.holding_bars,
+                    }
 
             # 2. Generate signals for symbols with enough data
             signals = []
             for sym in all_data:
-                df = all_data[sym]
-                window = df[df["timestamp"] <= ts].tail(warmup)
-                if len(window) < warmup:
+                cache = all_cache[sym]
+                if ts not in cache.index:
+                    continue
+                row = cache.loc[ts]
+                if not bool(row.get("ready", False)):
                     continue
 
                 exchange_sym = sym.replace("/", "")
@@ -488,33 +834,28 @@ class HistoricalBacktester:
                     continue
 
                 try:
-                    # Compute signal using same fusion engine as live
-                    fused = self.signal_engine.fuse(window, exchange_sym)
+                    direction = float(row.get("fused_direction", 0.0))
+                    base_confidence = float(row.get("fused_confidence", 0.0))
+                    if np.isnan(direction) or np.isnan(base_confidence):
+                        continue
 
                     # Blend ML prediction
-                    features = build_features(window)
-                    ml_pred = self._get_ml_prediction(sym, features)
                     ml_agreed = False
-
-                    if ml_pred and abs(ml_pred["signal"]) > 0.01:
-                        ml_conf = ml_pred["confidence"]
-                        ml_signal = ml_pred["signal"]
-                        tech_dir = fused.direction
-
-                        if (ml_signal > 0 and tech_dir > 0) or (ml_signal < 0 and tech_dir < 0):
-                            confidence = min(fused.confidence + 0.15 * ml_conf, 1.0)
+                    ml_signal = float(row.get("ml_signal", 0.0))
+                    ml_conf = float(row.get("ml_confidence", 0.0))
+                    if abs(ml_signal) > 0.01:
+                        if (ml_signal > 0 and direction > 0) or (ml_signal < 0 and direction < 0):
+                            confidence = min(base_confidence + 0.15 * ml_conf, 1.0)
                             ml_agreed = True
                         else:
-                            confidence = max(fused.confidence - 0.10 * ml_conf, 0.0)
+                            confidence = max(base_confidence - 0.10 * ml_conf, 0.0)
                     else:
-                        confidence = fused.confidence
-
-                    direction = fused.direction
+                        confidence = base_confidence
 
                     # Trend filter: only trade with the 50-EMA.
                     if self.params.use_trend_filter:
-                        ema50 = window["close"].ewm(span=50, adjust=False).mean().iloc[-1]
-                        current_close = float(window.iloc[-1]["close"])
+                        ema50 = float(row.get("ema50", 0.0))
+                        current_close = float(row["close"])
                         if direction > 0 and current_close < ema50:
                             continue
                         if direction < 0 and current_close > ema50:
@@ -524,23 +865,79 @@ class HistoricalBacktester:
                     if self.params.require_ml_agreement and not ml_agreed:
                         continue
 
-                    if abs(direction) >= self.params.min_confidence:
+                    pair_quality = float(row.get("pair_quality", 0.5))
+                    mtf_alignment = self._multi_timeframe_alignment_from_row(row, direction)
+                    adjusted_confidence = confidence
+                    adjusted_confidence *= (0.5 + 0.5 * mtf_alignment)
+                    adjusted_confidence *= regime_mult
+                    adjusted_confidence *= (0.6 + 0.4 * pair_quality)
+
+                    if not bool(row.get("volume_ok", True)):
+                        continue
+                    momentum_return = float(row.get("momentum_return", 0.0))
+                    if (direction > 0 and momentum_return < -0.03) or (direction < 0 and momentum_return > 0.03):
+                        continue
+
+                    final_confidence = min(adjusted_confidence, 1.0)
+                    if final_confidence >= self.params.min_confidence:
+                        signal_profile = {
+                            name: float(row.get(f"signal_{name}", 0.0) or 0.0)
+                            for name in self.signal_engine.signal_weights
+                        }
+                        feature_vector, derived_context = build_augmented_feature_vector(
+                            self._row_feature_vector(row),
+                            signal_confidence=final_confidence,
+                            pair_quality=pair_quality,
+                            mtf_alignment=mtf_alignment,
+                            regime_multiplier=regime_mult,
+                            ml_confidence=ml_conf,
+                            ml_signal=ml_signal,
+                            contributing_signals=signal_profile,
+                            directional_persistence_24=float(row.get("directional_persistence_24", 0.0) or 0.0),
+                            volatility_compression=float(row.get("volatility_compression", 0.0) or 0.0),
+                            entry_price=float(row["close"]),
+                            atr=float(row.get("atr", 0.0) or 0.0),
+                            sl_atr_mult=self.params.sl_atr_mult,
+                            sl_floor_pct=self.params.sl_floor_pct,
+                            sl_cap_pct=self.params.sl_cap_pct,
+                            breakeven_trigger_pct=self.params.breakeven_trigger,
+                            trailing_trigger_pct=self.params.trailing_trigger,
+                            trade_direction=direction,
+                        )
                         signals.append({
                             "symbol": exchange_sym,
                             "direction": direction,
-                            "confidence": confidence,
+                            "confidence": final_confidence,
                             "ml_agreed": ml_agreed,
-                            "atr": self._compute_atr(window),
-                            "close": float(window.iloc[-1]["close"]),
+                            "atr": float(row.get("atr", 0.0) or 0.0),
+                            "close": float(row["close"]),
+                            "pair_quality": pair_quality,
+                            "feature_vector": feature_vector,
+                            "regime": self._regime_name_from_multiplier(regime_mult),
+                            "entry_context": {
+                                "pair_quality": pair_quality,
+                                "mtf_alignment": mtf_alignment,
+                                "regime_multiplier": regime_mult,
+                                "ml_signal": ml_signal,
+                                "ml_confidence": ml_conf,
+                                "momentum_return": momentum_return,
+                                "volume_ok": bool(row.get("volume_ok", True)),
+                                "directional_persistence_24": float(row.get("directional_persistence_24", 0.0) or 0.0),
+                                "volatility_compression": float(row.get("volatility_compression", 0.0) or 0.0),
+                                **derived_context,
+                            },
                         })
                 except Exception:
                     continue
 
-            # 3. Sort by confidence descending, take top signals
+            # 3. Apply conflict arbitration, then rank by confidence.
+            signals = self._arbitrate_signals(signals)
             signals.sort(key=lambda s: s["confidence"], reverse=True)
             remaining_slots = self.params.max_positions - len(self.positions)
 
             for sig in signals[:remaining_slots]:
+                if self._cluster_position_count(sig["symbol"]) >= MAX_CLUSTER_POSITIONS:
+                    continue
                 nav = self._nav(current_prices)
                 size_usd = self._kelly_size(sig["confidence"], nav)
 
@@ -573,6 +970,10 @@ class HistoricalBacktester:
                     take_profit=tp,
                     confidence=sig["confidence"],
                     ml_agreed=sig["ml_agreed"],
+                    signal_direction=sig["direction"],
+                    feature_vector=list(sig.get("feature_vector", [])),
+                    regime=str(sig.get("regime", "unknown")),
+                    entry_context=dict(sig.get("entry_context", {})),
                 )
                 self.positions.append(trade)
 
@@ -612,6 +1013,58 @@ class HistoricalBacktester:
         result = self._compute_stats(timeline)
         print(f"\n✅ Backtest complete in {elapsed:.1f}s")
         return result
+
+    def export_closed_trades_to_logger(
+        self,
+        trade_logger,
+        run_label: str,
+        metadata: dict[str, object] | None = None,
+    ) -> int:
+        """Export closed replay trades into the persistent learning journal."""
+        from nexus_alpha.learning.trade_logger import TradeRecord
+
+        prefix = f"replay:{run_label}:"
+        trade_logger.delete_trades_by_prefix(prefix)
+        exported = 0
+        for trade in self.closed_trades:
+            entry_ts = trade.entry_time.isoformat()
+            exit_ts = trade.exit_time.isoformat() if trade.exit_time is not None else entry_ts
+            trade_id = f"{prefix}{trade.trade_id}"
+            entry_ctx = dict(trade.entry_context)
+            entry_ctx["source"] = "historical_replay"
+            entry_ctx["run_label"] = run_label
+            if metadata:
+                entry_ctx.update(metadata)
+            trade_logger.log_trade_open(
+                TradeRecord(
+                    trade_id=trade_id,
+                    timestamp=entry_ts,
+                    symbol=trade.symbol,
+                    side=trade.side,
+                    entry_price=trade.entry_price,
+                    quantity=trade.quantity,
+                    notional_usd=trade.entry_price * trade.quantity,
+                    signal_direction=trade.signal_direction,
+                    signal_confidence=trade.confidence,
+                    contributing_signals=json.dumps({
+                        "ml_agreed": trade.ml_agreed,
+                        "exit_reason": trade.exit_reason,
+                    }),
+                    sentiment_score=0.0,
+                    regime=trade.regime,
+                    feature_vector=json.dumps(trade.feature_vector),
+                    entry_context=json.dumps(entry_ctx),
+                )
+            )
+            trade_logger.log_trade_close(
+                trade_id=trade_id,
+                exit_price=trade.exit_price,
+                realized_pnl=trade.pnl,
+                exit_context=json.dumps(trade.exit_context),
+                exit_timestamp=exit_ts,
+            )
+            exported += 1
+        return exported
 
     def _compute_stats(self, timeline: list) -> BacktestResult:
         """Compute comprehensive backtest statistics."""

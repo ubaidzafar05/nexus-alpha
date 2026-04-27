@@ -19,8 +19,9 @@ from typing import Any
 import numpy as np
 
 from nexus_alpha.config import NexusConfig
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import ExchangeName, Order, OrderSide, OrderType
+from nexus_alpha.execution.rl_execution_agent import RLExecutionAgent
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import ExchangeName, Order, OrderSide, OrderType
 
 logger = get_logger(__name__)
 
@@ -282,11 +283,14 @@ class OrderManagementSystem:
     Central OMS: manages order lifecycle, tracks fills, computes slippage.
     """
 
-    def __init__(self):
+    def __init__(self, rl_model_path: str | None = None):
         self._pending_orders: dict[str, Order] = {}
         self._executed_orders: list[Order] = []
         self._router = IntelligentExchangeRouter()
         self._ac_optimizer = AlmgrenChrissOptimizer()
+        self._rl_agent = RLExecutionAgent(model_path=rl_model_path)
+        if rl_model_path:
+            self._rl_agent.load(rl_model_path)
 
     def submit_order(self, order: Order) -> RoutingDecision:
         """Submit an order through the routing engine."""
@@ -317,6 +321,40 @@ class OrderManagementSystem:
             current_price=current_price,
             urgency=urgency,
         )
+
+    def adjust_slice_quantity(
+        self,
+        slice_idx: int,
+        n_slices: int,
+        quantity: float,
+        inventory_ratio: float,
+        bid_depth: float,
+        ask_depth: float,
+        spread_bps: float,
+    ) -> float:
+        """
+        Dynamically adjust slice quantity using the RL agent.
+        """
+        time_ratio = slice_idx / n_slices
+        multiplier = self._rl_agent.get_action_adjustment(
+            inventory_ratio=inventory_ratio,
+            time_ratio=time_ratio,
+            bid_depth=bid_depth,
+            ask_depth=ask_depth,
+            spread_bps=spread_bps,
+        )
+        
+        adjusted_qty = quantity * multiplier
+        
+        logger.info(
+            "slice_quantity_adjusted",
+            slice_idx=slice_idx,
+            original_qty=f"{quantity:.4f}",
+            adjusted_qty=f"{adjusted_qty:.4f}",
+            multiplier=f"{multiplier:.2f}",
+        )
+        
+        return adjusted_qty
 
     def record_fill(self, order_id: str, filled_price: float, filled_quantity: float) -> None:
         """Record a fill for a pending order."""

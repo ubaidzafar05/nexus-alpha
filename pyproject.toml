@@ -81,22 +81,23 @@ dependencies = [
     "rich>=13.7.0",
     "tenacity>=8.3.0",
     "orjson>=3.10.0",
+
+    # === Core ML / Reinforcement Learning (v6 Core) ===
+    "torch>=2.3.0",
+    "stable-baselines3>=2.3.0",
+    "gymnasium>=0.29.0",
+    "dowhy>=0.11.0",
+    "lingam>=1.8.0",
+    "lz4>=4.3.0",
 ]
 
 [project.optional-dependencies]
 research = [
-    # === Core ML / Deep Learning ===
-    "torch>=2.3.0",
+    # === Deep Learning Extensions ===
     "pytorch-lightning>=2.2.0",
     "pytorch-forecasting>=1.1.0",
-    # === Reinforcement Learning ===
-    "stable-baselines3>=2.3.0",
-    "gymnasium>=0.29.0",
     # === Genetic Programming / Evolutionary ===
     "deap>=1.4.1",
-    # === Causal Inference ===
-    "dowhy>=0.11.0",
-    "lingam>=1.8.0",
     # === Classical ML boosters ===
     "xgboost>=2.0.0",
     "lightgbm>=4.3.0",

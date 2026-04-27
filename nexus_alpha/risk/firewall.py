@@ -7,10 +7,10 @@ from datetime import datetime
 
 from nexus_alpha.config import RiskConfig
 from nexus_alpha.infrastructure.adversarial import AdversarialTestRunner
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 from nexus_alpha.risk.circuit_breaker import CircuitBreakerSystem, PreTradeRiskValidator
 from nexus_alpha.risk.contracts import DeploymentGateResult, RiskAction, RiskDecision
-from nexus_alpha.types import Order, Portfolio
+from nexus_alpha.schema_types import Order, Portfolio
 
 logger = get_logger(__name__)
 

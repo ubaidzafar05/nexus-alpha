@@ -27,7 +27,7 @@ from datetime import datetime
 from typing import Any
 
 from nexus_alpha.config import NexusConfig
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -109,12 +109,15 @@ class LiveMarketIngestor:
     # ── Kafka producer ────────────────────────────────────────────────────────
 
     def _init_kafka(self) -> None:
+        if not self._kafka_bootstrap:
+            logger.info("kafka_producer_disabled", exchange=self._exchange_id)
+            return
         try:
             from confluent_kafka import Producer  # type: ignore[import]
             self._producer = Producer({
                 "bootstrap.servers": self._kafka_bootstrap,
                 "linger.ms": 5,           # Batch for 5ms before sending
-                "compression.type": "lz4",
+                "compression.type": "none",
                 "acks": "1",              # Leader ack — fast but reliable enough for ticks
             })
             logger.info("kafka_producer_ready", bootstrap=self._kafka_bootstrap)
@@ -277,6 +280,20 @@ class LiveMarketIngestor:
             "ingested_at": datetime.utcnow().isoformat(),
         }
 
+    def _normalize_trade(self, symbol: str, trade: dict[str, Any]) -> dict[str, Any]:
+        """Normalize raw trade event for VPIN/OFI consumption."""
+        return {
+            "schema": "trade_v1",
+            "symbol": symbol.replace("/", ""),
+            "exchange": self._exchange_id,
+            "timestamp": datetime.utcfromtimestamp(trade["timestamp"] / 1000).isoformat(),
+            "price": float(trade["price"]),
+            "amount": float(trade["amount"]),
+            "side": trade["side"],  # 'buy' or 'sell'
+            "trade_id": str(trade["id"]),
+            "ingested_at": datetime.utcnow().isoformat(),
+        }
+
     def _normalize_orderbook(self, symbol: str, ob: dict[str, Any]) -> dict[str, Any]:
         """Normalize order book snapshot — compute imbalance signal."""
         bids = ob.get("bids", [])[:10]
@@ -330,19 +347,22 @@ class LiveMarketIngestor:
         }
 
     async def _ensure_markets_loaded(self, exchange: Any) -> None:
-        last_error: Exception | None = None
-        for attempt in range(2):
+        """Load exchange markets with persistent retries."""
+        backoff = 1.0
+        while self._running:
             try:
                 await exchange.load_markets()
+                logger.info("exchange_markets_loaded", exchange=self._exchange_id)
                 return
             except Exception as err:
-                last_error = err
-                if attempt == 0:
-                    await asyncio.sleep(1.0)
-                    continue
-                raise
-        if last_error is not None:
-            raise last_error
+                logger.warning(
+                    "exchange_markets_load_failed_retrying",
+                    exchange=self._exchange_id,
+                    error=str(err),
+                    next_retry_s=backoff,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60.0)
 
     # ── WebSocket streaming ───────────────────────────────────────────────────
 
@@ -392,13 +412,55 @@ class LiveMarketIngestor:
                 await asyncio.sleep(min(backoff, self.RECONNECT_MAX_DELAY))
                 backoff *= 2
 
+    async def _stream_trades(self, exchange: Any, symbol: str) -> None:
+        """Stream real-time trades for VPIN calculation."""
+        backoff = self.RECONNECT_BASE_DELAY
+        params = self._stream_params()
+        while self._running:
+            try:
+                trades = await exchange.watch_trades(symbol, None, None, params)
+                for t in trades:
+                    tick = self._normalize_trade(symbol, t)
+                    self._publish_tick(tick)
+                backoff = self.RECONNECT_BASE_DELAY
+            except asyncio.CancelledError:
+                break
+            except Exception as err:
+                logger.warning("trade_stream_error", symbol=symbol, error=str(err))
+                self._stats.reconnects += 1
+                await asyncio.sleep(min(backoff, self.RECONNECT_MAX_DELAY))
+                backoff *= 2
+
     # ── Main run loop ─────────────────────────────────────────────────────────
 
     async def run(self) -> None:
         """
-        Start streaming all symbols concurrently.
-        Creates one OHLCV stream + one order book stream per symbol.
+        Start streaming all symbols concurrently with external supervisor logic.
         """
+        self._running = True
+        supervisor_backoff = 2.0
+        while self._running:
+            try:
+                await self._run_internal()
+                # If _run_internal returns without error but we are still 'running',
+                # it means the internal tasks finished (e.g. connectivity lost).
+                # We should wait and retry instead of breaking.
+                if self._running:
+                    logger.warning("ingestor_internal_loop_exited_restarting", exchange=self._exchange_id)
+                    await asyncio.sleep(supervisor_backoff)
+                    supervisor_backoff = min(supervisor_backoff * 2, 60.0)
+            except Exception as err:
+                logger.error(
+                    "ingestor_task_crashed_restarting",
+                    exchange=self._exchange_id,
+                    error=str(err),
+                    next_restart_s=supervisor_backoff,
+                )
+                await asyncio.sleep(supervisor_backoff)
+                supervisor_backoff = min(supervisor_backoff * 2, 60.0)
+
+    async def _run_internal(self) -> None:
+        """Implementation of the streaming loop."""
         try:
             import ccxt.pro as ccxtpro  # type: ignore[import]
         except ImportError:
@@ -410,7 +472,6 @@ class LiveMarketIngestor:
 
         self._init_kafka()
         self._init_redis()
-        self._running = True
         tasks: list[asyncio.Task[Any]] = []
 
         exchange = getattr(ccxtpro, self._exchange_id)(self._build_exchange_config())
@@ -419,14 +480,12 @@ class LiveMarketIngestor:
                 logger.info(
                     "exchange_testnet_execution_enabled",
                     exchange=self._exchange_id,
-                    note="market-data ingestion remains on public endpoints",
                 )
 
             logger.info(
                 "live_ingestor_starting",
                 exchange=self._exchange_id,
                 symbols=self._symbols,
-                kafka_topic=self._kafka_topic,
             )
             await self._ensure_markets_loaded(exchange)
 
@@ -434,16 +493,12 @@ class LiveMarketIngestor:
             for symbol in self._symbols:
                 tasks.append(asyncio.create_task(self._stream_ohlcv(exchange, symbol)))
                 tasks.append(asyncio.create_task(self._stream_orderbook(exchange, symbol)))
+                tasks.append(asyncio.create_task(self._stream_trades(exchange, symbol)))
 
-            # Stats reporter
             tasks.append(asyncio.create_task(self._stats_reporter()))
 
-            try:
-                await asyncio.gather(*tasks)
-            except asyncio.CancelledError:
-                pass
+            await asyncio.gather(*tasks)
         finally:
-            self._running = False
             for t in tasks:
                 t.cancel()
             if tasks:
@@ -451,7 +506,6 @@ class LiveMarketIngestor:
             await exchange.close()
             if self._producer:
                 self._producer.flush(timeout=5)
-            logger.info("live_ingestor_stopped", stats=self._stats.__dict__)
 
     async def _stats_reporter(self) -> None:
         """Log ingestion stats every 60 seconds."""
@@ -502,7 +556,18 @@ class MultiExchangeIngestor:
         ]
 
     async def run(self) -> None:
-        await asyncio.gather(*[i.run() for i in self._ingestors])
+        tasks = [
+            asyncio.create_task(i.run(), name=f"{i._exchange_id}_ingestor")
+            for i in self._ingestors
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            self.stop()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     def stop(self) -> None:
         for i in self._ingestors:
@@ -515,7 +580,7 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     from nexus_alpha.config import load_config
-    from nexus_alpha.logging import setup_logging
+    from nexus_alpha.log_config import setup_logging
 
     cfg = load_config()
     setup_logging(cfg.log_level)

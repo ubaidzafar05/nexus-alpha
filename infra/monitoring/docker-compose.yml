@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  telegram-forwarder:
+    build:
+      context: ./alertmanager
+      dockerfile: ../Dockerfile.telegram_forwarder
+    environment:
+      - TELEGRAM_BOT_TOKEN
+      - TELEGRAM_CHAT_ID
+    ports:
+      - "127.0.0.1:5001:5001"
+    restart: unless-stopped
+
+  metrics-server:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile.metrics_server
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  ollama-monitor:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile.ollama_monitor
+    ports:
+      - "8002:8002"
+    restart: unless-stopped

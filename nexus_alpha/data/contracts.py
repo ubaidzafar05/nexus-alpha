@@ -7,7 +7,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from nexus_alpha.types import ExchangeName
+from nexus_alpha.schema_types import ExchangeName
 
 
 class EventKind(str, Enum):

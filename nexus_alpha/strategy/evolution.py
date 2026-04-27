@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 

@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 
 from nexus_alpha.config import LLMConfig, NexusConfig
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -323,6 +323,8 @@ class OpenClawNetwork:
             await agent.stop()
         for task in self._tasks:
             task.cancel()
+        if self._tasks:
+            await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
         logger.info("openclaw_network_stopped")
 

@@ -27,8 +27,8 @@ from torch.optim import Adam
 
 from nexus_alpha.agents.tournament import BaseAgent
 from nexus_alpha.config import RLAgentConfig
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import Signal
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import Signal
 
 logger = get_logger(__name__)
 

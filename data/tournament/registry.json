@@ -1,0 +1,42 @@
+{
+  "champion": {
+    "id": "optuna_challenger_202604091958",
+    "type": "SignalFusionEngine",
+    "symbol": "BTC/USDT",
+    "timeframe": "1h",
+    "registered_at": "2026-04-09T19:58:06.790416",
+    "metrics": {
+      "net_return_pct": -2656.22,
+      "accuracy": 0.529
+    },
+    "parameters": {
+      "n_estimators": 400,
+      "max_depth": 4,
+      "learning_rate": 0.020974846196561314,
+      "min_confidence": 0.1742742260049735
+    }
+  },
+  "candidates": [],
+  "past_champions": [
+    {
+      "id": "baseline_3d5d09fb",
+      "type": "SignalFusionEngine",
+      "symbol": "BTC/USDT",
+      "timeframe": "1h",
+      "registered_at": "2026-04-09T17:49:38.788135",
+      "metrics": {
+        "net_return_pct": 0.0,
+        "sharpe": 0.0,
+        "accuracy": 0.5
+      },
+      "parameters": {
+        "weights": {
+          "technical": 0.4,
+          "sentiment": 0.3,
+          "on_chain": 0.3
+        },
+        "min_confidence": 0.25
+      }
+    }
+  ]
+}

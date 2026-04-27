@@ -15,3 +15,6 @@ nexus_alpha.egg-info
 backtest_matrix_results.json
 freqtrade/user_data
 mlruns
+data/
+venv/
+node_modules/

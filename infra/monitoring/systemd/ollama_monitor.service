@@ -1,0 +1,17 @@
+[Unit]
+Description=Nexus Alpha - Ollama monitor
+After=network.target
+
+[Service]
+User=azt
+WorkingDirectory=/Users/azt/Desktop/Python/nexus-alpha/infra/self_healing
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/env python3 ollama_monitor.py
+Restart=on-failure
+RestartSec=20
+MemoryMax=1G
+CPUQuota=40%
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from nexus_alpha.learning.historical_data import build_features, load_ohlcv
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -197,9 +197,11 @@ def train_rl_agent(
         return {"error": "torch not available"}
 
     from nexus_alpha.agents.rl_agent import TD3Agent
+    from nexus_alpha.config import RLAgentConfig
 
     env = TradingEnvironment(symbol=symbol, timeframe=timeframe)
-    agent = TD3Agent(state_dim=env.state_dim, action_dim=1)
+    config = RLAgentConfig(state_dim=env.state_dim, action_dim=1)
+    agent = TD3Agent(config=config)
 
     # Try to load existing checkpoint
     ckpt_path = checkpoint_dir / "rl_agent_latest.pt"
@@ -226,11 +228,12 @@ def train_rl_agent(
                 break
 
             action = agent.select_action(state, add_noise=True)
-            next_state, reward, done, info = env.step(float(action[0]))
+            next_state, reward, done, info = env.step(action)
 
-            agent.replay_buffer.push(state, action, reward, next_state, done)
+            from nexus_alpha.agents.rl_agent import Transition
+            agent.replay_buffer.push(Transition(state, np.array([action]), reward, next_state, done))
 
-            if len(agent.replay_buffer) > agent.batch_size:
+            if len(agent.replay_buffer) > agent.config.batch_size:
                 agent.train_step()
 
             state = next_state

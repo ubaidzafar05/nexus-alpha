@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+from functools import lru_cache
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -29,6 +30,7 @@ async def download_ohlcv(
     timeframe: str = "1h",
     since: str = "2022-01-01",
     until: str | None = None,
+    exchange_id: str = "binance",
     data_dir: Path = DATA_DIR,
 ) -> pd.DataFrame:
     """
@@ -37,7 +39,8 @@ async def download_ohlcv(
     """
     import ccxt.async_support as ccxt_async
 
-    exchange = ccxt_async.binance({"enableRateLimit": True})
+    exchange_class = getattr(ccxt_async, exchange_id)
+    exchange = exchange_class({"enableRateLimit": True})
     data_dir.mkdir(parents=True, exist_ok=True)
 
     since_ts = int(datetime.strptime(since, "%Y-%m-%d").timestamp() * 1000)
@@ -89,11 +92,12 @@ async def download_ohlcv(
 
     # Save as Parquet
     safe_symbol = symbol.replace("/", "_")
-    output_path = data_dir / f"{safe_symbol}_{timeframe}.parquet"
+    output_path = data_dir / f"{exchange_id}_{safe_symbol}_{timeframe}.parquet"
     df.to_parquet(output_path, index=False)
 
     logger.info(
         "download_complete",
+        exchange=exchange_id,
         symbol=symbol,
         timeframe=timeframe,
         candles=len(df),
@@ -120,23 +124,60 @@ async def download_all(
     since: str = "2022-01-01",
     symbols: list[str] | None = None,
     timeframes: list[str] | None = None,
+    exchanges: list[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
-    """Download all symbols and timeframes."""
+    """Download all symbols, timeframes, and exchanges."""
     symbols = symbols or SYMBOLS
     timeframes = timeframes or TIMEFRAMES
+    exchanges = exchanges or ["binance"]
     results = {}
 
-    for symbol in symbols:
-        for tf in timeframes:
-            key = f"{symbol}_{tf}"
-            try:
-                df = await download_ohlcv(symbol=symbol, timeframe=tf, since=since)
-                results[key] = df
-            except Exception as err:
-                logger.warning("download_failed", symbol=symbol, timeframe=tf, error=repr(err))
+    for exchange in exchanges:
+        for symbol in symbols:
+            for tf in timeframes:
+                key = f"{exchange}_{symbol}_{tf}"
+                try:
+                    df = await download_ohlcv(
+                        symbol=symbol,
+                        timeframe=tf,
+                        since=since,
+                        exchange_id=exchange
+                    )
+                    results[key] = df
+                except Exception as err:
+                    logger.warning(
+                        "download_failed",
+                        exchange=exchange,
+                        symbol=symbol,
+                        timeframe=tf,
+                        error=repr(err)
+                    )
 
     logger.info("download_all_complete", datasets=len(results))
     return results
+
+
+def backfill_sentiment(ohlcv_df: pd.DataFrame, sentiment_data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Align external sentiment data with OHLCV timestamps.
+    sentiment_data must have 'timestamp' and 'sentiment_score' columns.
+    """
+    if "timestamp" not in sentiment_data.columns or "sentiment_score" not in sentiment_data.columns:
+        logger.warning("invalid_sentiment_data_format")
+        return ohlcv_df
+
+    sentiment_data["timestamp"] = pd.to_datetime(sentiment_data["timestamp"])
+    ohlcv_df["timestamp"] = pd.to_datetime(ohlcv_df["timestamp"])
+
+    # Merge and forward-fill sentiment (sentiment persists until next update)
+    merged = pd.merge_asof(
+        ohlcv_df.sort_values("timestamp"),
+        sentiment_data.sort_values("timestamp"),
+        on="timestamp",
+        direction="backward"
+    )
+    merged["sentiment_score"] = merged["sentiment_score"].fillna(0.0)
+    return merged
 
 
 # ─── Feature Engineering ─────────────────────────────────────────────────────
@@ -345,3 +386,27 @@ def prepare_training_data(
         "feature_names": feature_cols,
         "n_features": len(feature_cols),
     }
+
+
+@lru_cache(maxsize=1)
+def get_feature_column_names() -> list[str]:
+    """Return the deterministic feature-column ordering used by build_features()."""
+    rows = 500
+    index = np.arange(rows, dtype=float)
+    close = 100 + 0.03 * index + np.sin(index / 11.0) * 2.0
+    open_ = close + np.sin(index / 7.0) * 0.15
+    high = np.maximum(open_, close) + 0.4
+    low = np.minimum(open_, close) - 0.4
+    volume = 1000 + (np.cos(index / 9.0) + 1.5) * 150
+    df = pd.DataFrame(
+        {
+            "timestamp": [datetime(2024, 1, 1) + timedelta(hours=int(i)) for i in index],
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        }
+    )
+    features = build_features(df)
+    return [column for column in features.columns if not column.startswith("target_")]

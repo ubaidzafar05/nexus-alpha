@@ -1,0 +1,7 @@
+/Users/azt/Desktop/Python/nexus-alpha/dashboard/backend/main.py:306: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")

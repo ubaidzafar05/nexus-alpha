@@ -1,0 +1,23 @@
+{
+    "champion": {
+        "id": "stable_challenger",
+        "metrics": {
+            "net_return_pct": 12.0,
+            "accuracy": 0.58,
+            "worst_window_net_pct": -2.0
+        },
+        "t_score": 0.33999999999999997
+    },
+    "candidates": [],
+    "past_champions": [
+        {
+            "id": "volatile_champ",
+            "metrics": {
+                "net_return_pct": 15.5,
+                "accuracy": 0.52,
+                "worst_window_net_pct": -18.0
+            },
+            "t_score": 0.16
+        }
+    ]
+}

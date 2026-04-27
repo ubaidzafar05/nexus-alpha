@@ -8,9 +8,15 @@ WORKDIR /app
 
 COPY pyproject.toml ./
 COPY README.md ./
+
+# REASONING: Install dependencies before copying source to maximize Docker layer caching.
+RUN pip install --no-cache-dir .
+
 COPY nexus_alpha/ nexus_alpha/
+COPY dashboard/ dashboard/
 
 RUN pip install --no-cache-dir -e .
+RUN playwright install --with-deps chromium
 
 # ─── Production image ─────────────────────────────────────────────────
 FROM base AS production

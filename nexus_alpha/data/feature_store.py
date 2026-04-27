@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Protocol
 
 from nexus_alpha.data.contracts import FeatureSnapshotPayload
-from nexus_alpha.types import ExchangeName
+from nexus_alpha.schema_types import ExchangeName
 
 
 @dataclass(frozen=True)

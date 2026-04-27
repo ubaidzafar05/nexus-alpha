@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from nexus_alpha.types import MarketRegime
+from nexus_alpha.schema_types import MarketRegime
 
 
 class PredictionBand(BaseModel):

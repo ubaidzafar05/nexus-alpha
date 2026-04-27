@@ -9,7 +9,7 @@ from nexus_alpha.data.consumer import EventConsumer
 from nexus_alpha.data.contracts import EventKind, FeatureSnapshotPayload, TickEventPayload
 from nexus_alpha.data.feature_store import FeatureStore
 from nexus_alpha.data.ingestion import IngestionPipeline
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 

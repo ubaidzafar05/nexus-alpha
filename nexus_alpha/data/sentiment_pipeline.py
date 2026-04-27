@@ -39,7 +39,7 @@ from nexus_alpha.data.free_sources import (
     get_total_tvl_history,
 )
 from nexus_alpha.data.reddit_client import fetch_new_posts
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -160,7 +160,7 @@ class SentimentPipelineRunner:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         articles: list[dict[str, Any]] = []
-        for subreddit, batch in zip(subreddits, results, strict=False):
+        for subreddit, batch in zip(subreddits, results):
             if isinstance(batch, Exception):
                 logger.warning("reddit_fetch_error", subreddit=subreddit, error=str(batch))
                 continue
@@ -300,7 +300,7 @@ class SentimentPipelineRunner:
                 )
 
         raw_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        for key, value in zip(tasks.keys(), raw_results, strict=False):
+        for key, value in zip(tasks.keys(), raw_results):
             if isinstance(value, Exception):
                 logger.warning("macro_source_failed", source=key, error=str(value))
                 continue
@@ -380,6 +380,9 @@ class SentimentPipelineRunner:
             return False
 
     def _init_kafka(self) -> None:
+        if not self._config.kafka.bootstrap_servers:
+            logger.info("sentiment_kafka_disabled")
+            return
         try:
             from confluent_kafka import Producer  # type: ignore[import]
             self._kafka_producer = Producer({
@@ -543,7 +546,7 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     from nexus_alpha.config import load_config
-    from nexus_alpha.logging import setup_logging
+    from nexus_alpha.log_config import setup_logging
 
     cfg = load_config()
     setup_logging(cfg.log_level)

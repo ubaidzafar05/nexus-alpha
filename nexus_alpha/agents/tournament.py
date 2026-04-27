@@ -20,12 +20,14 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import json
+from pathlib import Path
 
 import numpy as np
 
 from nexus_alpha.config import TournamentConfig
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import AgentPerformance, Portfolio, Signal
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import AgentPerformance, Portfolio, Signal
 
 logger = get_logger(__name__)
 
@@ -36,11 +38,20 @@ logger = get_logger(__name__)
 class BaseAgent(ABC):
     """Abstract base for all tournament agents."""
 
-    def __init__(self, agent_id: str | None = None, agent_type: str = "base"):
+    def __init__(self, agent_id: str | None = None, agent_type: str = "base", cluster_id: str | None = None):
         self.agent_id = agent_id or f"{agent_type}-{uuid.uuid4().hex[:8]}"
         self.agent_type = agent_type
         self.created_at = datetime.utcnow()
         self.is_active = True
+        
+        # V8: Swarm Genealogy (Phase 17)
+        self.lineage_depth = 0
+        self.ancestor_id: str = self.agent_id
+        
+        # V9: Portfolio Symmetry (Phase 19)
+        self.cluster_id: str | None = cluster_id
+        
+        self.metadata: dict[str, Any] = {}
 
     @abstractmethod
     def generate_signal(self, features: dict[str, np.ndarray]) -> Signal | None:
@@ -51,6 +62,14 @@ class BaseAgent(ABC):
     def update(self, market_data: dict) -> None:
         """Update internal state with new market data."""
         ...
+
+    def get_genome(self) -> dict[str, Any]:
+        """Return a dictionary of mutable hyper-parameters (Agent DNA)."""
+        return {}
+
+    def set_genome(self, genome: dict[str, Any]) -> None:
+        """Update internal hyper-parameters from a new genome."""
+        pass
 
 
 # ─── Paper Trading Tracker ────────────────────────────────────────────────────
@@ -237,6 +256,7 @@ class TournamentOrchestrator:
         self.capital_weights: dict[str, float] = {}
         self.performance_history: dict[str, list[AgentPerformance]] = defaultdict(list)
         self._last_cull = datetime.utcnow()
+        self._last_signals: dict[str, Signal] = {} # V9: Cache for cluster delta optimization
 
         logger.info("tournament_initialized", config=self.config.model_dump())
 
@@ -253,6 +273,15 @@ class TournamentOrchestrator:
             total_agents=len(self.agents),
         )
 
+    def update_agents(self, market_data: dict) -> None:
+        """Broadcast market updates (ticks/OHLCV) to all competing agents."""
+        for agent in self.agents.values():
+            if agent.is_active:
+                try:
+                    agent.update(market_data)
+                except Exception as e:
+                    logger.warning("agent_update_failed", agent_id=agent.agent_id, error=str(e))
+
     def evaluate_all(self) -> dict[str, AgentPerformance]:
         """Evaluate all agents and return performance metrics."""
         results = {}
@@ -267,13 +296,18 @@ class TournamentOrchestrator:
 
         return results
 
-    def rebalance_capital(self) -> dict[str, float]:
+    def rebalance_capital(self, min_total_trades: int = 5) -> dict[str, float]:
         """
         Reallocate capital weights based on Calmar ratio ranking.
         Top performers get more capital, bottom performers get less.
         """
         performance = self.evaluate_all()
         if not performance:
+            return self.capital_weights
+            
+        # V6 ULTRA: Warm-up guard — don't rebalance if trade history is too sparse
+        total_recorded_trades = sum(p.total_trades for p in performance.values())
+        if total_recorded_trades < min_total_trades:
             return self.capital_weights
 
         # Rank by Calmar ratio
@@ -295,6 +329,81 @@ class TournamentOrchestrator:
         )
 
         return self.capital_weights
+
+    def get_cluster_delta(self, cluster_id: str, features: dict[str, np.ndarray]) -> float:
+        """
+        Calculate the capital-weighted net direction (Delta) for a correlation cluster.
+        V9 (Phase 19): Used for Crowding Detection and Symmetrization.
+        """
+        cluster_agents = [
+            (self.capital_weights.get(aid, 0.0), a) 
+            for aid, a in self.agents.items() 
+            if a.is_active and a.cluster_id == cluster_id
+        ]
+        
+        if not cluster_agents:
+            return 0.0
+            
+        total_weight = sum(w for w, _ in cluster_agents)
+        if total_weight <= 0:
+            return 0.0
+            
+        net_delta = 0.0
+        for weight, agent in cluster_agents:
+            try:
+                # V9 Phase 19 Performance Optimization:
+                # Use the cached signal from the most recent get_combined_signal pass
+                # instead of re-triggering inference for every agent in the cluster.
+                sig = self._last_signals.get(agent.agent_id)
+                if not sig:
+                    sig = agent.generate_signal(features)
+                    
+                if sig:
+                    net_delta += (weight / total_weight) * sig.direction
+            except Exception:
+                continue
+                
+        return net_delta
+
+    def save_swarm_state(self, path: Path | str = "data/tournament/swarm_registry.json") -> bool:
+        """
+        Serialize current swarm state for dashboard visualization and hot-reloads.
+        """
+        try:
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
+            swarm_data = []
+            for agent_id, agent in self.agents.items():
+                portfolio = self.portfolios.get(agent_id)
+                perf = compute_agent_performance(agent_id, portfolio) if portfolio else None
+                
+                swarm_data.append({
+                    "agent_id": agent_id,
+                    "agent_type": agent.agent_type,
+                    "lineage_depth": getattr(agent, "lineage_depth", 0),
+                    "ancestor_id": getattr(agent, "ancestor_id", agent_id),
+                    "cluster_id": getattr(agent, "cluster_id", "unassigned"),
+                    "is_active": agent.is_active,
+                    "capital_weight": round(self.capital_weights.get(agent_id, 0.0), 4),
+                    "metrics": {
+                        "sharpe": round(perf.sharpe_ratio, 2) if perf else 0.0,
+                        "pnl": round(perf.pnl, 2) if perf else 0.0,
+                    } if perf else {},
+                    "is_hedge": agent.metadata.get("hedge", False) if hasattr(agent, "metadata") else False
+                })
+                
+            with open(path, "w") as f:
+                json.dump({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "total_agents": len(self.agents),
+                    "swarm": swarm_data
+                }, f, indent=4)
+                
+            return True
+        except Exception:
+            logger.exception("swarm_state_save_failed")
+            return False
 
     def cull_and_spawn(self, spawn_callback=None) -> tuple[list[str], list[str]]:
         """
@@ -349,34 +458,55 @@ class TournamentOrchestrator:
     def get_combined_signal(self, features: dict[str, np.ndarray]) -> Signal | None:
         """
         Get capital-weighted combined signal from all active agents.
-        Each agent generates a signal, weighted by their tournament capital allocation.
+        V7: Incorporates Guardian risk-scaling to protect against tail events.
         """
-        signals: list[tuple[float, Signal]] = []
+        alpha_signals: list[tuple[float, Signal]] = []
+        risk_signals: list[Signal] = []
 
+        self._last_signals.clear() # Clear cache for new tick
         for agent_id, agent in self.agents.items():
             if not agent.is_active:
                 continue
             try:
                 signal = agent.generate_signal(features)
                 if signal is not None:
-                    weight = self.capital_weights.get(agent_id, 0.0)
-                    signals.append((weight, signal))
+                    self._last_signals[agent_id] = signal # Cache for cluster-delta optimization
+                    if agent.agent_type == "risk-guardian":
+                        risk_signals.append(signal)
+                    else:
+                        weight = self.capital_weights.get(agent_id, 0.0)
+                        alpha_signals.append((weight, signal))
             except Exception:
                 logger.exception("agent_signal_error", agent_id=agent_id)
 
-        if not signals:
+        if not alpha_signals:
             return None
 
         # Capital-weighted average direction and confidence
-        total_weight = sum(w for w, _ in signals)
+        total_weight = sum(w for w, _ in alpha_signals)
         if total_weight <= 0:
             return None
 
-        weighted_direction = sum(w * s.direction for w, s in signals) / total_weight
-        weighted_confidence = sum(w * s.confidence for w, s in signals) / total_weight
+        weighted_direction = sum(w * s.direction for w, s in alpha_signals) / total_weight
+        weighted_confidence = sum(w * s.confidence for w, s in alpha_signals) / total_weight
+
+        # Phase 17 Genealogy stats
+        depths = [agent.lineage_depth for agent_id, agent in self.agents.items() if agent.is_active]
+        avg_depth = sum(depths) / len(depths) if depths else 0.0
+
+        risk_scaling_factor = 1.0
+        max_stress = 0.0
+        if risk_signals:
+            # Multi-axis Review: Added default to prevent ValueError if no direction==0.0 signals exist
+            neutral_risk_signals = [s.confidence for s in risk_signals if s.direction == 0.0]
+            if neutral_risk_signals:
+                max_stress = max(neutral_risk_signals)
+                # Non-linear scaling: as stress approaches 1.0, confidence drops to 0.0 rapidly
+                risk_scaling_factor = max(0.0, 1.0 - (max_stress ** 1.5))
+                weighted_confidence *= risk_scaling_factor
 
         # Use symbol from highest-weight signal
-        best_signal = max(signals, key=lambda x: x[0])[1]
+        best_signal = max(alpha_signals, key=lambda x: x[0])[1]
 
         return Signal(
             signal_id=uuid.uuid4().hex[:12],
@@ -387,7 +517,10 @@ class TournamentOrchestrator:
             timestamp=datetime.utcnow(),
             timeframe=best_signal.timeframe,
             metadata={
-                "n_agents": len(signals),
-                "agent_weights": {s.source: w for w, s in signals},
+                "n_agents": len(alpha_signals),
+                "agent_weights": {s.source: w for w, s in alpha_signals},
+                "risk_stress": max_stress,
+                "risk_multiplier": risk_scaling_factor,
+                "avg_lineage_depth": round(avg_depth, 2)
             },
         )

@@ -8,8 +8,8 @@ from datetime import datetime
 import numpy as np
 
 from nexus_alpha.execution.execution_engine import AlmgrenChrissOptimizer
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import OrderSide
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import OrderSide
 
 logger = get_logger(__name__)
 

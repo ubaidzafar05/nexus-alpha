@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from nexus_alpha.data.contracts import EventKind, IngestionEvent
 from nexus_alpha.data.kafka_admin import ensure_topics_exist
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 if TYPE_CHECKING:
     from nexus_alpha.config import NexusConfig

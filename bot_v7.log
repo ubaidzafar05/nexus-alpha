@@ -1,0 +1,351 @@
+{"event": "nexus_paper_mode", "level": "info", "timestamp": "2026-04-14T15:42:08.281196Z"}
+{"event": "initializing_components", "level": "info", "timestamp": "2026-04-14T15:42:08.299963Z"}
+{"paper_relax": false, "event": "circuit_breaker_initialized", "level": "info", "timestamp": "2026-04-14T15:42:11.790172Z"}
+{"n_regimes": 5, "hazard_rate": 0.004, "event": "regime_oracle_initialized", "level": "info", "timestamp": "2026-04-14T15:42:11.790283Z"}
+{"device": "cpu", "params": 2046215, "event": "world_model_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.319285Z"}
+{"config": {"rolling_window_days": 60, "cull_bottom_pct": 0.2, "cull_frequency_days": 30, "min_agents": 5, "graduation_stages": ["paper", "micro", "small", "production"], "paper_to_micro_days": 60, "micro_to_small_days": 30, "small_to_prod_days": 60}, "event": "tournament_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.319686Z"}
+{"config": {"rolling_window_days": 60, "cull_bottom_pct": 0.2, "cull_frequency_days": 30, "min_agents": 5, "graduation_stages": ["paper", "micro", "small", "production"], "paper_to_micro_days": 60, "micro_to_small_days": 30, "small_to_prod_days": 60}, "event": "tournament_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.322901Z"}
+{"agent_id": "fusion-champion", "overrides": {}, "event": "fusion_agent_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.325554Z"}
+{"agent_id": "fusion-champion", "agent_type": "fusion-v6", "total_agents": 1, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.325585Z"}
+{"agent_id": "v6-vpin-aggro", "overrides": {"vpin": 3.0, "vpin_advanced": 3.0, "ofi_l2": 1.0}, "event": "fusion_agent_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.326005Z"}
+{"agent_id": "v6-vpin-aggro", "agent_type": "fusion-v6", "total_agents": 2, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.326032Z"}
+{"agent_id": "v6-ofi-aggro", "overrides": {"ofi_l2": 3.5, "vpin": 1.0}, "event": "fusion_agent_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.326292Z"}
+{"agent_id": "v6-ofi-aggro", "agent_type": "fusion-v6", "total_agents": 3, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.326315Z"}
+{"agent_id": "v6-micro-fusion", "overrides": {"vpin": 1.5, "ofi_l2": 1.5, "rsi_7": 0.5}, "event": "fusion_agent_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.326567Z"}
+{"agent_id": "v6-micro-fusion", "agent_type": "fusion-v6", "total_agents": 4, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.326589Z"}
+{"agent_id": "v6-vol-alpha", "overrides": {"bollinger_low": 2.0, "bollinger_high": 2.0, "vpin": 2.0}, "event": "fusion_agent_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.326835Z"}
+{"agent_id": "v6-vol-alpha", "agent_type": "fusion-v6", "total_agents": 5, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.326860Z"}
+{"agent_id": "rl-proxy-ae6f536e", "agent_type": "rl-proxy", "total_agents": 6, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.326899Z"}
+{"agent_id": "v7-eth-btc-leader", "overrides": {"vpin": 2.0, "ofi_l2": 2.0}, "event": "fusion_agent_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.327132Z"}
+{"agent_id": "v7-eth-btc-leader", "agent_type": "fusion-v7", "total_agents": 7, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.327151Z"}
+{"agent_id": "v7-sol-btc-leader", "overrides": {"vpin": 2.0, "ofi_l2": 2.0}, "event": "fusion_agent_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.327397Z"}
+{"agent_id": "v7-sol-btc-leader", "agent_type": "fusion-v7", "total_agents": 8, "event": "agent_registered", "level": "info", "timestamp": "2026-04-14T15:42:12.327419Z"}
+{"path": "data/checkpoints/lightweight_online_reward.pkl", "event": "no_checkpoint_found", "level": "info", "timestamp": "2026-04-14T15:42:12.327617Z"}
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator DummyRegressor from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator DecisionTreeRegressor from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator GradientBoostingRegressor from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator DummyClassifier from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator GradientBoostingClassifier from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+{"path": "data/checkpoints/lightweight_BTC_USDT_1h.pkl", "stats": 0.5249, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.349103Z"}
+{"symbol": "BTCUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.349160Z"}
+{"path": "data/checkpoints/lightweight_BTC_USDT_4h.pkl", "stats": 0.5175, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.363159Z"}
+{"symbol": "BTCUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.363215Z"}
+{"path": "data/checkpoints/lightweight_BTC_USDT_1d.pkl", "stats": 0.5074, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.376491Z"}
+{"symbol": "BTCUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.376541Z"}
+{"path": "data/checkpoints/lightweight_ETH_USDT_1h.pkl", "stats": 0.5299, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.393412Z"}
+{"symbol": "ETHUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.393467Z"}
+{"path": "data/checkpoints/lightweight_ETH_USDT_4h.pkl", "stats": 0.5285, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.407248Z"}
+{"symbol": "ETHUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.407310Z"}
+{"path": "data/checkpoints/lightweight_ETH_USDT_1d.pkl", "stats": 0.5369, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.420734Z"}
+{"symbol": "ETHUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.420790Z"}
+{"path": "data/checkpoints/lightweight_SOL_USDT_1h.pkl", "stats": 0.5238, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.436643Z"}
+{"symbol": "SOLUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.436707Z"}
+{"path": "data/checkpoints/lightweight_SOL_USDT_4h.pkl", "stats": 0.5037, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.451487Z"}
+{"symbol": "SOLUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.451562Z"}
+{"path": "data/checkpoints/lightweight_SOL_USDT_1d.pkl", "stats": 0.4828, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.464988Z"}
+{"symbol": "SOLUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.465045Z"}
+{"path": "data/checkpoints/lightweight_BNB_USDT_1h.pkl", "stats": 0.5208, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.479677Z"}
+{"symbol": "BNBUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.479734Z"}
+{"path": "data/checkpoints/lightweight_BNB_USDT_4h.pkl", "stats": 0.5088, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.495033Z"}
+{"symbol": "BNBUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.495099Z"}
+{"path": "data/checkpoints/lightweight_BNB_USDT_1d.pkl", "stats": 0.5271, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.510242Z"}
+{"symbol": "BNBUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.510321Z"}
+{"path": "data/checkpoints/lightweight_ADA_USDT_1h.pkl", "stats": 0.5314, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.526500Z"}
+{"symbol": "ADAUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.526587Z"}
+{"path": "data/checkpoints/lightweight_ADA_USDT_4h.pkl", "stats": 0.4971, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.542602Z"}
+{"symbol": "ADAUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.542674Z"}
+{"path": "data/checkpoints/lightweight_ADA_USDT_1d.pkl", "stats": 0.4581, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.558700Z"}
+{"symbol": "ADAUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T15:42:12.558794Z"}
+{"count": 15, "event": "ml_models_ready", "level": "info", "timestamp": "2026-04-14T15:42:12.558817Z"}
+{"path": "data/checkpoints/regime_oracle.pkl", "regime": "trending_bull", "buffer_size": 200, "updates": 1747, "event": "regime_oracle_restored", "level": "info", "timestamp": "2026-04-14T15:42:12.559709Z"}
+{"nav": "100000.00", "cash": "100000.00", "positions": 0, "event": "portfolio_restored", "level": "info", "timestamp": "2026-04-14T15:42:12.560820Z"}
+{"agent_count": 10, "event": "openclaw_network_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.560917Z"}
+{"trading_mode": "paper", "circuit_breaker": "enabled", "llm_backend": "http://localhost:11434", "event": "system_initialized", "level": "info", "timestamp": "2026-04-14T15:42:12.560965Z"}
+DEBUG: Preparing API Server on port 8000...
+╔══════════════════════════════════════════╗
+║   NEXUS-ALPHA v3.0 — Free Edition        ║
+╚══════════════════════════════════════════╝
+  Mode:     paper
+  LLM:      Ollama (qwen3:8b)
+  Kafka:    localhost:9092
+  Monthly cost: $0.00
+  Press Ctrl+C to stop.
+
+{"event": "sentiment_redis_connected", "level": "info", "timestamp": "2026-04-14T15:42:12.731071Z"}
+{"event": "sentiment_kafka_producer_ready", "level": "info", "timestamp": "2026-04-14T15:42:12.875210Z"}
+{"interval_minutes": 15, "tracked_assets": ["BTC", "ETH", "SOL", "BNB", "ADA", "AVAX", "MATIC", "DOT", "LINK", "UNI"], "event": "sentiment_pipeline_starting", "level": "info", "timestamp": "2026-04-14T15:42:12.875280Z"}
+{"agents": 10, "event": "openclaw_network_started", "level": "info", "timestamp": "2026-04-14T15:42:12.875421Z"}
+{"check_count": 0, "event": "watchdog_started", "level": "info", "timestamp": "2026-04-14T15:42:12.875453Z"}
+{"mode": "paper", "cycle_interval": 60.0, "nav": 100000.0, "event": "trading_loop_started", "level": "info", "timestamp": "2026-04-14T15:42:12.878734Z"}
+{"nav": "100000", "positions": 0, "exposure": "0.0%", "event": "cycle_start", "level": "info", "timestamp": "2026-04-14T15:42:12.878772Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.906610Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.906752Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.906861Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.906963Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907063Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907172Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907273Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907375Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907477Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907576Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907675Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907777Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907882Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.907980Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.908082Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.908236Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.908365Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.908473Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.908579Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.908680Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.908783Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.909890Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.909997Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910098Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910198Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910308Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910406Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910504Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910604Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910702Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910797Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910896Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.910991Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911093Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911190Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911286Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911380Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911474Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911567Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911660Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911757Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.911850Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.912861Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.912967Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913064Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913160Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913255Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913350Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913446Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913542Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913638Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913734Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913829Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.913932Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914029Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914130Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914226Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914336Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914429Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914526Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914624Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914719Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.914816Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.915840Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.915946Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916045Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916143Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916237Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916333Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916430Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916526Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916624Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916721Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916819Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.916918Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917015Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917113Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917209Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917303Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917394Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917493Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917589Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917683Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.917778Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.918784Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.918889Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.918987Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919084Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919180Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919277Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919374Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919475Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919580Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919677Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919774Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919870Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.919967Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920063Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920161Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920255Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920351Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920444Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920540Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920637Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:42:12.920732Z"}
+{"count": 1, "symbols": ["BNBUSDT"], "directions": ["-0.93"], "confidences": ["0.74"], "regime_multiplier": "0.70", "event": "signals_generated", "level": "info", "timestamp": "2026-04-14T15:42:12.930456Z"}
+{"ticks": 0, "event": "god_loop_rebalance_trigger", "level": "info", "timestamp": "2026-04-14T15:42:12.934631Z"}
+{"agent_id": "fusion-champion", "calmar": 0.0, "event": "tournament_champion", "level": "info", "timestamp": "2026-04-14T15:42:12.935067Z"}
+{"symbol": "BNBUSDT", "event": "skip_stale_data", "level": "warning", "timestamp": "2026-04-14T15:42:12.936036Z"}
+{"path": "data/checkpoints/regime_oracle.pkl", "regime": "trending_bull", "event": "regime_oracle_saved", "level": "info", "timestamp": "2026-04-14T15:42:12.937374Z"}
+{"port": 8000, "event": "api_server_starting", "level": "info", "timestamp": "2026-04-14T15:42:12.937436Z"}
+INFO:     Started server process [50650]
+INFO:     Waiting for application startup.
+/Users/azt/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+{"bootstrap": "localhost:9092", "event": "kafka_producer_ready", "level": "info", "timestamp": "2026-04-14T15:42:13.761925Z"}
+{"event": "redis_connected_for_sentiment", "level": "info", "timestamp": "2026-04-14T15:42:13.764707Z"}
+{"exchange": "binance", "note": "market-data ingestion remains on public endpoints", "event": "exchange_testnet_execution_enabled", "level": "info", "timestamp": "2026-04-14T15:42:13.770048Z"}
+{"exchange": "binance", "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "ADA/USDT"], "kafka_topic": "market.ticks", "event": "live_ingestor_starting", "level": "info", "timestamp": "2026-04-14T15:42:13.770082Z"}
+{"category": "breaking_news", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.773509Z"}
+{"category": "social_pulse", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.776477Z"}
+{"category": "crypto_media", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.779442Z"}
+{"category": "options_flow", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.782472Z"}
+{"category": "whale_alert", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.785556Z"}
+{"category": "sec_filing", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.789292Z"}
+{"category": "on_chain", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.792710Z"}
+{"category": "macro_calendar", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.795734Z"}
+{"category": "exchange_status", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.798638Z"}
+{"category": "competitor_intel", "event": "openclaw_agent_started", "level": "info", "timestamp": "2026-04-14T15:42:13.801593Z"}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+{"attempt": 1, "sleep_for": "1.54s", "error": "ConnectError('')", "event": "telegram_send_retry", "level": "info", "timestamp": "2026-04-14T15:42:14.159938Z"}
+{"url": "https://cointelegraph.com/latest-cryptocurrency-news", "count": 1, "event": "crawl_target_fetched", "level": "info", "timestamp": "2026-04-14T15:42:15.099188Z"}
+{"url": "https://decrypt.co/news", "count": 1, "event": "crawl_target_fetched", "level": "info", "timestamp": "2026-04-14T15:42:15.116798Z"}
+{"error": "zip() takes no keyword arguments", "exc_info": true, "event": "sentiment_pipeline_error", "level": "error", "timestamp": "2026-04-14T15:42:15.118214Z"}
+{"url": "https://www.coindesk.com/markets/", "count": 1, "event": "crawl_target_fetched", "level": "info", "timestamp": "2026-04-14T15:42:15.276740Z"}
+{"targets": 3, "count": 3, "event": "crawl4ai_agent_fetched", "level": "info", "timestamp": "2026-04-14T15:42:15.277008Z"}
+{"error": "JSONDecodeError('Expecting value: line 1 column 1 (char 0)')", "event": "sec_edgar_fetch_failed", "level": "warning", "timestamp": "2026-04-14T15:42:16.075029Z"}
+{"attempt": 2, "sleep_for": "2.60s", "error": "ConnectError('')", "event": "telegram_send_retry", "level": "info", "timestamp": "2026-04-14T15:42:16.267995Z"}
+{"count": 2, "event": "rss_agent_fetched", "level": "info", "timestamp": "2026-04-14T15:42:17.016380Z"}
+{"total_reports": 7, "event": "orchestrator_run_complete", "level": "info", "timestamp": "2026-04-14T15:42:17.016656Z"}
+{"topic": "nexus.intelligence", "count": 7, "event": "intelligence_reports_published", "level": "info", "timestamp": "2026-04-14T15:42:17.108632Z"}
+{"reports": 7, "event": "free_intelligence_bootstrap_complete", "level": "info", "timestamp": "2026-04-14T15:42:17.109205Z"}
+{"hint": "pip install apscheduler", "event": "apscheduler_not_installed", "level": "warning", "timestamp": "2026-04-14T15:42:17.109639Z"}
+{"topic": "market.ticks", "event": "kafka_tick_consumer_started", "level": "info", "timestamp": "2026-04-14T15:42:17.292057Z"}
+{"error": "UnsupportedCodecError: Libraries for lz4 compression codec not found", "event": "kafka_tick_consumer_failed", "level": "error", "timestamp": "2026-04-14T15:42:17.542631Z"}
+{"attempt": 3, "sleep_for": "4.88s", "error": "ConnectError('')", "event": "telegram_send_retry", "level": "info", "timestamp": "2026-04-14T15:42:19.165947Z"}
+{"nav": "100000", "positions": 0, "exposure": "0.0%", "event": "cycle_start", "level": "info", "timestamp": "2026-04-14T15:43:12.879085Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915033Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915209Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915330Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915452Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915560Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915683Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915789Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.915908Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916044Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916155Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916260Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916361Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916464Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916563Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916677Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916774Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916870Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.916966Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.917069Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.917179Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.917276Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.918352Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.918460Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.918561Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.918669Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.918767Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.918866Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.918967Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919066Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919165Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919264Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919364Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919465Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919564Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919663Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919764Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919859Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.919956Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.920052Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.920148Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.920245Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.920341Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.921359Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.921469Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.921569Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.921669Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.921774Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.921872Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.921972Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922076Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922181Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922280Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922381Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922479Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922580Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922680Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922780Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922875Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.922974Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.923069Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.923165Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.923265Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.923360Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.924390Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.924499Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.924599Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.924699Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.924797Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.924894Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.924994Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925094Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925194Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925295Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925403Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925503Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925608Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925705Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925804Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925899Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.925994Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.926089Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.926184Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.926280Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.926375Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.927396Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.927505Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.927606Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.927713Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.927813Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.927912Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928007Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928107Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928206Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928305Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928404Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928502Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928604Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928702Z"}
+{"agent_id": "fusion-champion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928802Z"}
+{"agent_id": "v6-vpin-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.928899Z"}
+{"agent_id": "v6-ofi-aggro", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.929003Z"}
+{"agent_id": "v6-micro-fusion", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.929098Z"}
+{"agent_id": "v6-vol-alpha", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.929197Z"}
+{"agent_id": "v7-eth-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.929294Z"}
+{"agent_id": "v7-sol-btc-leader", "exc_info": true, "event": "fusion_agent_signal_failed", "level": "error", "timestamp": "2026-04-14T15:43:12.929392Z"}
+{"count": 1, "symbols": ["BNBUSDT"], "directions": ["-0.86"], "confidences": ["0.69"], "regime_multiplier": "0.70", "event": "signals_generated", "level": "info", "timestamp": "2026-04-14T15:43:12.938386Z"}
+{"symbol": "BNBUSDT", "event": "skip_stale_data", "level": "warning", "timestamp": "2026-04-14T15:43:12.938866Z"}
+{"path": "data/checkpoints/regime_oracle.pkl", "regime": "trending_bear", "event": "regime_oracle_saved", "level": "info", "timestamp": "2026-04-14T15:43:12.942659Z"}
+{"ticks_published": 11232, "ticks_per_second": 176.88, "reconnects": 0, "event": "ingestor_stats", "level": "info", "timestamp": "2026-04-14T15:43:16.059403Z"}
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [50650]

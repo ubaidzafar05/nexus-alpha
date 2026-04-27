@@ -1,0 +1,229 @@
+🔥 ACTIVATING NEXUS GOD-LOOP FOR BTC/USDT
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T15:02:31.931441Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T15:02:31.939968Z"}
+{"episode": 10, "avg_reward": "-6.63", "best": "0.79", "equity": "9985", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:03:10.285801Z"}
+{"episode": 20, "avg_reward": "-6.55", "best": "0.99", "equity": "9350", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:03:52.651994Z"}
+{"episode": 30, "avg_reward": "-7.87", "best": "0.99", "equity": "9602", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:04:35.654810Z"}
+{"episode": 40, "avg_reward": "-9.79", "best": "0.99", "equity": "9661", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:05:23.857947Z"}
+{"episode": 50, "avg_reward": "-2.67", "best": "1.29", "equity": "10029", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:06:09.561415Z"}
+  ✅ Best reward: 1.29
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T15:11:32.410373Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T15:12:36.949685Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T15:12:36.957215Z"}
+{"episode": 10, "avg_reward": "-8.46", "best": "5.07", "equity": "9888", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:13:21.633711Z"}
+{"episode": 20, "avg_reward": "-14.58", "best": "5.07", "equity": "9384", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:14:11.193686Z"}
+{"episode": 30, "avg_reward": "-15.37", "best": "5.07", "equity": "10433", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:15:00.693364Z"}
+{"episode": 40, "avg_reward": "-9.95", "best": "5.07", "equity": "9960", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:15:45.979153Z"}
+{"episode": 50, "avg_reward": "-6.28", "best": "5.07", "equity": "9621", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:16:38.772248Z"}
+  ✅ Best reward: 5.07
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T15:21:58.956042Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T15:23:03.508644Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T15:23:03.516011Z"}
+{"episode": 10, "avg_reward": "-3.64", "best": "3.73", "equity": "10315", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:23:46.778370Z"}
+{"episode": 20, "avg_reward": "-15.91", "best": "3.73", "equity": "9274", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:24:32.020869Z"}
+{"episode": 30, "avg_reward": "-8.54", "best": "3.73", "equity": "10286", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:25:19.658171Z"}
+{"episode": 40, "avg_reward": "-4.12", "best": "3.73", "equity": "9596", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:26:08.118572Z"}
+{"episode": 50, "avg_reward": "-14.20", "best": "3.73", "equity": "9828", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:26:55.424210Z"}
+  ✅ Best reward: 3.73
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T15:33:09.572174Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T15:34:14.818950Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T15:34:14.827258Z"}
+{"episode": 10, "avg_reward": "-17.95", "best": "2.87", "equity": "10507", "trades": 719, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:35:03.727901Z"}
+{"episode": 20, "avg_reward": "-27.96", "best": "2.87", "equity": "9567", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:35:56.972053Z"}
+{"episode": 30, "avg_reward": "-10.64", "best": "2.87", "equity": "9641", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:36:48.875002Z"}
+{"episode": 40, "avg_reward": "-18.07", "best": "3.22", "equity": "9526", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:37:42.102595Z"}
+{"episode": 50, "avg_reward": "-11.17", "best": "3.22", "equity": "9758", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:38:35.204284Z"}
+  ✅ Best reward: 3.22
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T15:43:53.226778Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T15:44:57.625085Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T15:44:57.633120Z"}
+{"episode": 10, "avg_reward": "-3.55", "best": "1.51", "equity": "9609", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:45:36.882909Z"}
+{"episode": 20, "avg_reward": "-6.31", "best": "1.51", "equity": "9514", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:46:18.033457Z"}
+{"episode": 30, "avg_reward": "-6.21", "best": "1.51", "equity": "10204", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:47:01.119475Z"}
+{"episode": 40, "avg_reward": "-7.84", "best": "1.51", "equity": "10043", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:47:45.273395Z"}
+{"episode": 50, "avg_reward": "-17.17", "best": "3.46", "equity": "9590", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:48:34.357162Z"}
+  ✅ Best reward: 3.46
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T15:53:50.026722Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T15:54:54.111043Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T15:54:54.117835Z"}
+{"episode": 10, "avg_reward": "-6.04", "best": "-0.53", "equity": "9639", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:55:35.879609Z"}
+{"episode": 20, "avg_reward": "-8.47", "best": "-0.53", "equity": "10127", "trades": 719, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:56:18.035810Z"}
+{"episode": 30, "avg_reward": "-27.96", "best": "-0.53", "equity": "9650", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:56:59.930414Z"}
+{"episode": 40, "avg_reward": "-3.06", "best": "2.90", "equity": "10138", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:57:47.315529Z"}
+{"episode": 50, "avg_reward": "-7.54", "best": "2.90", "equity": "9613", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T15:58:37.924893Z"}
+  ✅ Best reward: 2.9
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T16:03:56.421945Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T16:05:00.790073Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T16:05:00.796401Z"}
+{"episode": 10, "avg_reward": "-6.86", "best": "3.75", "equity": "9432", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:05:43.390104Z"}
+{"episode": 20, "avg_reward": "-10.55", "best": "5.72", "equity": "10072", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:06:28.531981Z"}
+{"episode": 30, "avg_reward": "-21.08", "best": "5.72", "equity": "9539", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:07:15.910624Z"}
+{"episode": 40, "avg_reward": "-6.09", "best": "5.72", "equity": "9606", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:08:04.104241Z"}
+{"episode": 50, "avg_reward": "-7.70", "best": "5.72", "equity": "9483", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:08:53.113416Z"}
+  ✅ Best reward: 5.72
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T16:14:11.908198Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T16:15:16.320175Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T16:15:16.327736Z"}
+{"episode": 10, "avg_reward": "-7.71", "best": "-3.39", "equity": "9623", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:15:57.465049Z"}
+{"episode": 20, "avg_reward": "-19.44", "best": "-3.39", "equity": "9421", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:16:41.902425Z"}
+{"episode": 30, "avg_reward": "-7.34", "best": "-0.16", "equity": "9802", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:31:53.212826Z"}
+{"episode": 40, "avg_reward": "-4.72", "best": "2.60", "equity": "9589", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:32:37.804605Z"}
+{"episode": 50, "avg_reward": "-7.55", "best": "2.60", "equity": "9445", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:33:25.901226Z"}
+  ✅ Best reward: 2.6
+  ✅ Checkpoint: data/checkpoints/rl_agent_latest.pt
+🔁 Walk-forward evaluation: BTC/USDT 1h
+{"symbol": "BTC/USDT", "timeframe": "1h", "windows": 142, "traded_samples": 25794, "avg_accuracy": 0.5246, "net_return_pct": -4779.626, "event": "walk_forward_complete", "level": "info", "timestamp": "2026-04-12T16:38:45.508443Z"}
+  windows: 142
+  traded samples: 25794 (72.7% coverage)
+  avg accuracy: 52.5%
+  traded accuracy: 53.2%
+  total net return: -4779.63%
+  avg window net: -33.66%
+  avg confidence: 0.317
+  avg MAE: 0.003531
+  best window: #131 2025-11-25→2025-12-06 net=-18.41%
+  worst window: #137 2026-01-27→2026-02-06 net=-67.99%
+
+🧭 Suggested learning policy:
+  min confidence: 0.25
+  min new trades: 35
+  retrain interval: 12h
+God-Loop Failure: zip() takes no keyword arguments
+🤖 Training RL agent on BTC/USDT for 50 episodes...
+{"state_dim": 51, "device": "cpu", "event": "td3_agent_initialized", "level": "info", "timestamp": "2026-04-12T16:39:49.858560Z"}
+{"path": "data/checkpoints/rl_agent_latest.pt", "event": "rl_checkpoint_loaded", "level": "info", "timestamp": "2026-04-12T16:39:49.866269Z"}
+{"episode": 10, "avg_reward": "-15.68", "best": "-1.53", "equity": "9424", "trades": 720, "event": "rl_training_progress", "level": "info", "timestamp": "2026-04-12T16:40:46.967599Z"}

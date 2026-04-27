@@ -1,0 +1,118 @@
+{
+    "timestamp": "2026-04-15T02:23:05.126051",
+    "total_agents": 8,
+    "swarm": [
+        {
+            "agent_id": "fusion-champion",
+            "agent_type": "fusion-v6",
+            "lineage_depth": 0,
+            "ancestor_id": "fusion-champion",
+            "cluster_id": null,
+            "is_active": true,
+            "capital_weight": 1.0,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        },
+        {
+            "agent_id": "v6-vpin-aggro",
+            "agent_type": "fusion-v6",
+            "lineage_depth": 0,
+            "ancestor_id": "v6-vpin-aggro",
+            "cluster_id": null,
+            "is_active": true,
+            "capital_weight": 0.5,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        },
+        {
+            "agent_id": "v6-ofi-aggro",
+            "agent_type": "fusion-v6",
+            "lineage_depth": 0,
+            "ancestor_id": "v6-ofi-aggro",
+            "cluster_id": null,
+            "is_active": true,
+            "capital_weight": 0.3333,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        },
+        {
+            "agent_id": "v6-micro-fusion",
+            "agent_type": "fusion-v6",
+            "lineage_depth": 0,
+            "ancestor_id": "v6-micro-fusion",
+            "cluster_id": null,
+            "is_active": true,
+            "capital_weight": 0.25,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        },
+        {
+            "agent_id": "v6-vol-alpha",
+            "agent_type": "fusion-v6",
+            "lineage_depth": 0,
+            "ancestor_id": "v6-vol-alpha",
+            "cluster_id": "layer1",
+            "is_active": true,
+            "capital_weight": 0.2,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        },
+        {
+            "agent_id": "rl-proxy-01e32370",
+            "agent_type": "rl-proxy",
+            "lineage_depth": 0,
+            "ancestor_id": "rl-proxy-01e32370",
+            "cluster_id": null,
+            "is_active": true,
+            "capital_weight": 0.1667,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        },
+        {
+            "agent_id": "v7-eth-btc-leader",
+            "agent_type": "fusion-v7",
+            "lineage_depth": 0,
+            "ancestor_id": "v7-eth-btc-leader",
+            "cluster_id": "layer1",
+            "is_active": true,
+            "capital_weight": 0.1429,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        },
+        {
+            "agent_id": "v7-sol-btc-leader",
+            "agent_type": "fusion-v7",
+            "lineage_depth": 0,
+            "ancestor_id": "v7-sol-btc-leader",
+            "cluster_id": "layer1",
+            "is_active": true,
+            "capital_weight": 0.125,
+            "metrics": {
+                "sharpe": 0.0,
+                "pnl": 0.0
+            },
+            "is_hedge": false
+        }
+    ]
+}

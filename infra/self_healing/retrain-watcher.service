@@ -1,0 +1,15 @@
+[Unit]
+Description=Nexus-Alpha Retrain Watcher
+After=network.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/Users/azt/Desktop/Python/nexus-alpha
+ExecStart=/usr/bin/env python3 /Users/azt/Desktop/Python/nexus-alpha/infra/self_healing/retrain_watcher.py --interval 3600
+Restart=on-failure
+RestartSec=10
+User=azt
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

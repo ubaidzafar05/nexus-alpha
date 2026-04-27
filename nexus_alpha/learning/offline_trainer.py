@@ -15,21 +15,108 @@ import json
 import pickle
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
-from sklearn.metrics import accuracy_score, mean_absolute_error, r2_score
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, mean_absolute_error, r2_score
 
 from nexus_alpha.learning.historical_data import (
     build_features,
     load_ohlcv,
     prepare_training_data,
 )
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 
 CHECKPOINT_DIR = Path("data/checkpoints")
+
+
+def _build_learning_matrix(dataset: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    features = dataset["features"]
+    directions = dataset["directions"]
+    return np.concatenate([features, directions.reshape(-1, 1)], axis=1), dataset["targets"]
+
+
+def _dataset_kwargs(
+    *,
+    min_trades: int,
+    target_mode: str,
+    strong_move_pct: float,
+    min_quality_score: float,
+    balanced: bool,
+    target_metric: str,
+    target_threshold: float | None,
+    regime_slice: str | None,
+) -> dict[str, Any]:
+    return {
+        "min_trades": min_trades,
+        "target_mode": target_mode,
+        "strong_move_pct": strong_move_pct,
+        "min_quality_score": min_quality_score,
+        "balanced": balanced,
+        "target_metric": target_metric,
+        "target_threshold": target_threshold,
+        "regime_slice": regime_slice,
+    }
+
+
+def _split_chronological(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    n = len(X)
+    split = int(n * 0.8)
+    if split <= 0 or split >= n:
+        return None
+    return X[:split], X[split:], y[:split], y[split:]
+
+
+def _baseline_stats(y_val: np.ndarray) -> dict[str, float]:
+    classes, counts = np.unique(y_val, return_counts=True)
+    majority_idx = int(np.argmax(counts))
+    majority_class = int(classes[majority_idx])
+    baseline_pred = np.full(len(y_val), majority_class)
+    return {
+        "majority_class": majority_class,
+        "accuracy": float(accuracy_score(y_val, baseline_pred)),
+        "balanced_accuracy": float(balanced_accuracy_score(y_val, baseline_pred)),
+        "macro_f1": float(f1_score(y_val, baseline_pred, average="macro", zero_division=0)),
+    }
+
+
+def _prediction_edge_from_proba(proba: np.ndarray, target_mode: str) -> tuple[float, float]:
+    if target_mode == "binary":
+        win_probability = float(proba[1]) if len(proba) > 1 else 0.5
+        edge_score = (win_probability - 0.5) * 2.0
+        return edge_score, win_probability
+    if target_mode == "ternary":
+        loss_p = float(proba[0]) if len(proba) > 0 else 0.0
+        neutral_p = float(proba[1]) if len(proba) > 1 else 0.0
+        win_p = float(proba[2]) if len(proba) > 2 else 0.0
+        edge_score = (win_p - loss_p) + 0.1 * neutral_p
+        return float(np.clip(edge_score, -1.0, 1.0)), win_p
+    loss_strong = float(proba[0]) if len(proba) > 0 else 0.0
+    loss_weak = float(proba[1]) if len(proba) > 1 else 0.0
+    win_weak = float(proba[2]) if len(proba) > 2 else 0.0
+    win_strong = float(proba[3]) if len(proba) > 3 else 0.0
+    edge_score = (1.25 * win_strong + 0.5 * win_weak) - (0.5 * loss_weak + 1.25 * loss_strong)
+    win_probability = win_weak + win_strong
+    return float(np.clip(edge_score, -1.0, 1.0)), float(np.clip(win_probability, 0.0, 1.0))
+
+
+def _evaluate_classifier(model: Any, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> dict[str, float]:
+    model.fit(X_train, y_train)
+    pred = model.predict(X_val)
+    results = {
+        "accuracy": float(accuracy_score(y_val, pred)),
+        "balanced_accuracy": float(balanced_accuracy_score(y_val, pred)),
+        "macro_f1": float(f1_score(y_val, pred, average="macro", zero_division=0)),
+        "pred_class_counts": np.bincount(pred, minlength=max(int(np.max(y_train)), int(np.max(y_val))) + 1).tolist(),
+    }
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X_val)
+        results["mae"] = float(mean_absolute_error(y_val, np.argmax(proba, axis=1)))
+    return results
 
 
 class LightweightPredictor:
@@ -253,23 +340,65 @@ class OnlineLearner:
         predictor: LightweightPredictor | None = None,
         retrain_interval_hours: float = 6,
         min_new_trades: int = 20,
+        min_total_trades: int = 50,
+        min_direction_accuracy: float = 0.52,
+        min_balanced_accuracy: float = 0.45,
+        target_mode: str = "binary",
+        target_metric: str = "pnl_pct",
+        target_threshold: float | None = None,
+        strong_move_pct: float = 0.02,
+        min_quality_score: float = 0.0,
+        balanced_replay: bool = False,
+        regime_slice: str | None = None,
+        model_path: Path | None = None,
     ):
         self.predictor = predictor or LightweightPredictor()
         self.retrain_interval = retrain_interval_hours * 3600
         self.min_new_trades = min_new_trades
+        self.min_total_trades = min_total_trades
+        self.min_direction_accuracy = min_direction_accuracy
+        self.min_balanced_accuracy = min_balanced_accuracy
+        self.target_mode = target_mode
+        self.target_metric = target_metric
+        self.target_threshold = target_threshold
+        self.strong_move_pct = strong_move_pct
+        self.min_quality_score = min_quality_score
+        self.balanced_replay = balanced_replay
+        self.regime_slice = regime_slice
+        self.model_path = model_path or CHECKPOINT_DIR / "lightweight_online_reward.pkl"
         self._last_retrain = 0.0
-        self._trades_since_retrain = 0
+        self.predictor.load(self.model_path)
+
+    def _augment_features(self, features: np.ndarray, directions: np.ndarray | float) -> np.ndarray:
+        """Append trade direction so reward learning distinguishes longs from shorts."""
+        X = np.asarray(features, dtype=np.float32)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        direction_arr = np.asarray(directions, dtype=np.float32)
+        if direction_arr.ndim == 0:
+            direction_arr = np.full((len(X), 1), float(direction_arr), dtype=np.float32)
+        elif direction_arr.ndim == 1:
+            direction_arr = direction_arr.reshape(-1, 1)
+        if len(direction_arr) != len(X):
+            raise ValueError("Direction count must match feature rows")
+        return np.concatenate([X, direction_arr], axis=1)
 
     def record_outcome(self, features: np.ndarray, actual_return: float) -> None:
         """Record a trade outcome for future retraining."""
-        self._trades_since_retrain += 1
+        return None
 
-    def should_retrain(self) -> bool:
-        """Check if enough data has accumulated for a retrain cycle."""
+    def should_retrain(self, trade_logger: Any) -> bool:
+        """Check if enough new closed-trade evidence has accumulated."""
         elapsed = time.time() - self._last_retrain
+        total_closed_trades = trade_logger.count_closed_trades()
+        if total_closed_trades < self.min_total_trades:
+            return False
+        last_seen_metric = trade_logger.get_latest_metric("online_retrain_closed_trades")
+        last_seen_closed = int(last_seen_metric["metric_value"]) if last_seen_metric else 0
+        new_trades = max(0, total_closed_trades - last_seen_closed)
         return (
             elapsed >= self.retrain_interval
-            and self._trades_since_retrain >= self.min_new_trades
+            and new_trades >= self.min_new_trades
         )
 
     def retrain_from_journal(self, trade_logger) -> dict | None:
@@ -277,57 +406,540 @@ class OnlineLearner:
         Retrain using closed trades from the trade journal.
         Blends historical base knowledge with live trade experience.
         """
-        training_data = trade_logger.get_training_data(min_trades=50)
-        if training_data is None:
+        dataset = trade_logger.build_learning_dataset(
+            **_dataset_kwargs(
+                min_trades=self.min_total_trades,
+                target_mode=self.target_mode,
+                strong_move_pct=self.strong_move_pct,
+                min_quality_score=self.min_quality_score,
+                balanced=self.balanced_replay,
+                target_metric=self.target_metric,
+                target_threshold=self.target_threshold,
+                regime_slice=self.regime_slice,
+            ),
+        )
+        if dataset is None:
             return None
 
-        logger.info("online_retrain_started", n_trades=training_data["n_trades"])
+        logger.info(
+            "online_retrain_started",
+            n_trades=dataset["n_trades"],
+            target_mode=self.target_mode,
+            target_metric=self.target_metric,
+            min_quality_score=self.min_quality_score,
+            balanced_replay=self.balanced_replay,
+        )
 
-        features = training_data["features"]
-        rewards = training_data["rewards"]
+        X, y = _build_learning_matrix(dataset)
+        n = len(X)
+        split_data = _split_chronological(X, y)
+        if split_data is None:
+            return None
+        X_train, X_val, y_train, y_val = split_data
+        if len(np.unique(y_train)) < 2 or len(np.unique(y_val)) < 2:
+            total_closed = trade_logger.count_closed_trades()
+            latest_marker = trade_logger.get_latest_metric("online_retrain_closed_trades")
+            last_closed = int(latest_marker["metric_value"]) if latest_marker else 0
+            stats = {
+                "n_trades": n,
+                "new_trades": max(0, total_closed - last_closed),
+                "val_mae": 1.0,
+                "val_direction_accuracy": 0.0,
+                "val_balanced_accuracy": 0.0,
+                "baseline_direction_accuracy": 1.0,
+                "baseline_balanced_accuracy": 1.0,
+                "target_type": self.target_mode,
+                "target_metric": self.target_metric,
+                "updated": False,
+                "reason": "single_class_outcomes",
+            }
+            trade_logger.log_metric("retrain_direction_accuracy", 0.0)
+            trade_logger.log_metric("retrain_mae", 1.0)
+            trade_logger.log_metric(
+                "online_retrain_closed_trades",
+                float(total_closed),
+                details=json.dumps(stats),
+            )
+            logger.info("online_retrain_rejected_single_class", **stats)
+            return stats
 
-        # Train a fresh model on trade outcomes
-        n = len(features)
-        split = int(n * 0.8)
+        classifier = RandomForestClassifier(
+            n_estimators=300,
+            max_depth=5,
+            min_samples_leaf=3,
+            class_weight="balanced_subsample",
+            random_state=42,
+        )
+        classifier.fit(X_train, y_train)
 
-        model = GradientBoostingRegressor(
+        val_pred = classifier.predict(X_val)
+        val_dir_acc = float(accuracy_score(y_val, val_pred))
+        val_bal_acc = float(balanced_accuracy_score(y_val, val_pred))
+        val_macro_f1 = float(f1_score(y_val, val_pred, average="macro", zero_division=0))
+        val_mae = float(mean_absolute_error(y_val, val_pred))
+        baseline = _baseline_stats(y_val)
+        total_closed = trade_logger.count_closed_trades()
+        latest_marker = trade_logger.get_latest_metric("online_retrain_closed_trades")
+        last_closed = int(latest_marker["metric_value"]) if latest_marker else 0
+
+        stats = {
+            "n_trades": n,
+            "new_trades": max(0, total_closed - last_closed),
+            "val_mae": round(val_mae, 4),
+            "val_direction_accuracy": round(val_dir_acc, 4),
+            "val_balanced_accuracy": round(val_bal_acc, 4),
+            "val_macro_f1": round(val_macro_f1, 4),
+            "baseline_direction_accuracy": round(baseline["accuracy"], 4),
+            "baseline_balanced_accuracy": round(baseline["balanced_accuracy"], 4),
+            "target_type": self.target_mode,
+            "target_metric": self.target_metric,
+            "class_counts": dataset["class_counts"],
+            "slice_counts": dataset["slice_counts"],
+            "min_quality_score": self.min_quality_score,
+            "balanced_replay": self.balanced_replay,
+            "regime_slice": self.regime_slice,
+        }
+
+        min_required_accuracy = max(self.min_direction_accuracy, baseline["accuracy"] + 0.02)
+        min_required_balanced_accuracy = max(
+            self.min_balanced_accuracy,
+            baseline["balanced_accuracy"] + 0.02,
+        )
+        if val_dir_acc >= min_required_accuracy and val_bal_acc >= min_required_balanced_accuracy:
+            self.predictor.model = None
+            self.predictor.classifier = classifier
+            self.predictor.feature_names = [f"f{i}" for i in range(X.shape[1])]
+            self.predictor.training_stats = stats
+            self.predictor.save(self.model_path)
+            stats["updated"] = True
+            stats["min_required_accuracy"] = round(min_required_accuracy, 4)
+            stats["min_required_balanced_accuracy"] = round(min_required_balanced_accuracy, 4)
+            logger.info("online_retrain_accepted", **stats)
+        else:
+            stats["updated"] = False
+            stats["min_required_accuracy"] = round(min_required_accuracy, 4)
+            stats["min_required_balanced_accuracy"] = round(min_required_balanced_accuracy, 4)
+            logger.info("online_retrain_rejected_low_accuracy", **stats)
+
+        self._last_retrain = time.time()
+
+        trade_logger.log_metric("retrain_direction_accuracy", val_dir_acc)
+        trade_logger.log_metric("retrain_mae", val_mae)
+        trade_logger.log_metric(
+            "online_retrain_closed_trades",
+            float(total_closed),
+            details=json.dumps(stats),
+        )
+
+        return stats
+
+    def predict_reward(self, features: np.ndarray, trade_direction: float) -> dict[str, float] | None:
+        """Predict expected reward of a proposed long/short setup."""
+        target_type = self.predictor.training_stats.get("target_type")
+        if target_type in {"binary", "ternary", "quaternary", "profit_classification"} and self.predictor.classifier is not None:
+            X = self._augment_features(features, float(np.sign(trade_direction) or 0.0))
+            proba = self.predictor.classifier.predict_proba(X)[0]
+            effective_mode = "binary" if target_type == "profit_classification" else target_type
+            edge_score, win_probability = _prediction_edge_from_proba(proba, effective_mode)
+            confidence = abs(edge_score)
+            return {
+                "reward_prediction": round(edge_score, 4),
+                "confidence": round(float(confidence), 4),
+                "std": round(float(1.0 - confidence), 6),
+                "win_probability": round(win_probability, 4),
+            }
+
+        if self.predictor.model is None:
+            return None
+        X = self._augment_features(features, float(np.sign(trade_direction) or 0.0))
+        reward_pred = float(self.predictor.model.predict(X)[0])
+        tree_preds = np.array([
+            tree[0].predict(X)[0]
+            for tree in self.predictor.model.estimators_
+        ])
+        pred_std = float(np.std(tree_preds))
+        confidence = max(0.0, 1.0 - pred_std / (abs(reward_pred) + 1e-6))
+        confidence = min(confidence, 1.0)
+        return {
+            "reward_prediction": round(reward_pred, 4),
+            "confidence": round(float(confidence), 4),
+            "std": round(pred_std, 6),
+        }
+
+
+def benchmark_trade_outcome_models(
+    trade_logger: Any,
+    min_trades: int = 30,
+    min_quality_score: float = 0.0,
+    balanced: bool = False,
+    target_metric: str = "pnl_pct",
+    target_threshold: float | None = None,
+    regime_slice: str | None = None,
+) -> dict[str, Any] | None:
+    """Benchmark simple outcome models on filtered journal data."""
+    dataset = trade_logger.build_learning_dataset(
+        **_dataset_kwargs(
+            min_trades=min_trades,
+            target_mode="binary",
+            strong_move_pct=0.02,
+            min_quality_score=min_quality_score,
+            balanced=balanced,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+            regime_slice=regime_slice,
+        ),
+    )
+    if dataset is None:
+        return None
+
+    X, y = _build_learning_matrix(dataset)
+    split_data = _split_chronological(X, y)
+    if split_data is None:
+        return None
+    X_train, X_val, y_train, y_val = split_data
+    if len(np.unique(y_train)) < 2 or len(np.unique(y_val)) < 2:
+        return None
+
+    baseline = _baseline_stats(y_val)
+
+    candidates: dict[str, Any] = {
+        "logistic_regression": LogisticRegression(
+            random_state=42,
+            max_iter=1000,
+            class_weight="balanced",
+        ),
+        "random_forest": RandomForestClassifier(
+            n_estimators=300,
+            max_depth=4,
+            min_samples_leaf=3,
+            class_weight="balanced_subsample",
+            random_state=42,
+        ),
+        "gradient_boosting": GradientBoostingClassifier(
             n_estimators=200,
             max_depth=4,
             learning_rate=0.05,
             subsample=0.8,
             min_samples_leaf=10,
             random_state=42,
+        ),
+    }
+
+    results: dict[str, Any] = {
+        "n_trades": len(X),
+        "baseline_accuracy": round(baseline["accuracy"], 4),
+        "baseline_balanced_accuracy": round(baseline["balanced_accuracy"], 4),
+        "baseline_macro_f1": round(baseline["macro_f1"], 4),
+        "class_counts": dataset["class_counts"],
+        "slice_counts": dataset["slice_counts"],
+        "quality_mean": round(float(np.mean(dataset["quality_scores"])), 4),
+        "balanced_dataset": balanced,
+        "target_metric": target_metric,
+        "target_threshold": dataset.get("target_threshold"),
+        "regime_slice": regime_slice or "all",
+        "models": {},
+    }
+
+    best_name = ""
+    best_score = -1.0
+    for name, model in candidates.items():
+        metrics = _evaluate_classifier(model, X_train, y_train, X_val, y_val)
+        results["models"][name] = {k: round(v, 4) if isinstance(v, float) else v for k, v in metrics.items()}
+        score = metrics["balanced_accuracy"] + metrics["macro_f1"]
+        if score > best_score:
+            best_name = name
+            best_score = score
+
+    results["best_model"] = best_name
+    return results
+
+
+def benchmark_trade_bucket_models(
+    trade_logger: Any,
+    min_trades: int = 30,
+    strong_move_pct: float = 0.02,
+    min_quality_score: float = 0.0,
+    balanced: bool = False,
+    target_metric: str = "pnl_pct",
+    target_threshold: float | None = None,
+    regime_slice: str | None = None,
+) -> dict[str, Any] | None:
+    """Benchmark multiclass bucketed-outcome models on filtered journal data."""
+    dataset = trade_logger.build_learning_dataset(
+        **_dataset_kwargs(
+            min_trades=min_trades,
+            target_mode="quaternary",
+            strong_move_pct=strong_move_pct,
+            min_quality_score=min_quality_score,
+            balanced=balanced,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+            regime_slice=regime_slice,
+        ),
+    )
+    if dataset is None:
+        return None
+
+    X, y = _build_learning_matrix(dataset)
+    split_data = _split_chronological(X, y)
+    if split_data is None:
+        return None
+    X_train, X_val, y_train, y_val = split_data
+    if len(np.unique(y_train)) < 2 or len(np.unique(y_val)) < 2:
+        return None
+
+    class_count_len = max(int(np.max(y_train)), int(np.max(y_val))) + 1
+    class_counts = np.bincount(y_val, minlength=class_count_len)
+    baseline = _baseline_stats(y_val)
+
+    candidates: dict[str, Any] = {
+        "logistic_regression": LogisticRegression(
+            max_iter=2000,
+            class_weight="balanced",
+            solver="lbfgs",
+            random_state=42,
+        ),
+        "random_forest": RandomForestClassifier(
+            n_estimators=300,
+            max_depth=5,
+            min_samples_leaf=2,
+            class_weight="balanced_subsample",
+            random_state=42,
+        ),
+    }
+
+    results: dict[str, Any] = {
+        "n_trades": len(X),
+        "strong_move_pct": strong_move_pct,
+        "train_class_counts": np.bincount(y_train, minlength=class_count_len).tolist(),
+        "val_class_counts": class_counts.tolist(),
+        "majority_class_accuracy": round(baseline["accuracy"], 4),
+        "majority_class_balanced_accuracy": round(baseline["balanced_accuracy"], 4),
+        "majority_class_macro_f1": round(baseline["macro_f1"], 4),
+        "class_counts": dataset["class_counts"],
+        "slice_counts": dataset["slice_counts"],
+        "quality_mean": round(float(np.mean(dataset["quality_scores"])), 4),
+        "balanced_dataset": balanced,
+        "target_metric": target_metric,
+        "target_threshold": dataset.get("target_threshold"),
+        "regime_slice": regime_slice or "all",
+        "models": {},
+    }
+
+    best_name = ""
+    best_score = -1.0
+    for name, model in candidates.items():
+        metrics = _evaluate_classifier(model, X_train, y_train, X_val, y_val)
+        results["models"][name] = {k: round(v, 4) if isinstance(v, float) else v for k, v in metrics.items()}
+        score = metrics["balanced_accuracy"] + metrics["macro_f1"]
+        if score > best_score:
+            best_name = name
+            best_score = score
+
+    results["best_model"] = best_name
+    return results
+
+
+def benchmark_learning_targets(
+    trade_logger: Any,
+    min_trades: int = 30,
+    strong_move_pct: float = 0.02,
+    min_quality_score: float = 0.0,
+    target_metric: str = "pnl_pct",
+    target_threshold: float | None = None,
+) -> dict[str, Any] | None:
+    """Compare binary, ternary, and quaternary targets on chronological vs balanced datasets."""
+    variants = {
+        "binary_chronological": benchmark_trade_outcome_models(
+            trade_logger,
+            min_trades=min_trades,
+            min_quality_score=min_quality_score,
+            balanced=False,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+        ),
+        "binary_balanced": benchmark_trade_outcome_models(
+            trade_logger,
+            min_trades=min_trades,
+            min_quality_score=min_quality_score,
+            balanced=True,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+        ),
+        "quaternary_chronological": benchmark_trade_bucket_models(
+            trade_logger,
+            min_trades=min_trades,
+            strong_move_pct=strong_move_pct,
+            min_quality_score=min_quality_score,
+            balanced=False,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+        ),
+        "quaternary_balanced": benchmark_trade_bucket_models(
+            trade_logger,
+            min_trades=min_trades,
+            strong_move_pct=strong_move_pct,
+            min_quality_score=min_quality_score,
+            balanced=True,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+        ),
+    }
+    if not any(result is not None for result in variants.values()):
+        return None
+    return {
+        "strong_move_pct": strong_move_pct,
+        "min_quality_score": min_quality_score,
+        "target_metric": target_metric,
+        "target_threshold": target_threshold,
+        "variants": variants,
+    }
+
+
+def diagnose_learning_features(
+    trade_logger: Any,
+    min_trades: int = 30,
+    target_mode: str = "quaternary",
+    strong_move_pct: float = 0.02,
+    min_quality_score: float = 0.0,
+    top_n: int = 10,
+    target_metric: str = "pnl_pct",
+    target_threshold: float | None = None,
+    regime_slice: str | None = None,
+) -> dict[str, Any] | None:
+    """Inspect feature separability for a target scheme on the journal dataset."""
+    dataset = trade_logger.build_learning_dataset(
+        **_dataset_kwargs(
+            min_trades=min_trades,
+            target_mode=target_mode,
+            strong_move_pct=strong_move_pct,
+            min_quality_score=min_quality_score,
+            balanced=False,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+            regime_slice=regime_slice,
+        ),
+    )
+    if dataset is None:
+        return None
+
+    X, y = _build_learning_matrix(dataset)
+    if len(np.unique(y)) < 2:
+        return None
+
+    model = RandomForestClassifier(
+        n_estimators=300,
+        max_depth=5,
+        min_samples_leaf=3,
+        class_weight="balanced_subsample",
+        random_state=42,
+    )
+    model.fit(X, y)
+
+    summaries = []
+    feature_names = list(dataset.get("feature_names", []))
+    for idx in range(X.shape[1]):
+        feature_values = X[:, idx]
+        class_means = {
+            int(cls): round(float(np.mean(feature_values[y == cls])), 4)
+            for cls in sorted(np.unique(y))
+        }
+        separation = 0.0
+        if class_means:
+            mean_values = list(class_means.values())
+            spread = max(mean_values) - min(mean_values)
+            denom = float(np.std(feature_values) + 1e-6)
+            separation = spread / denom
+        summaries.append(
+            {
+                "feature": feature_names[idx] if idx < len(feature_names) else (f"f{idx}" if idx < X.shape[1] - 1 else "trade_direction"),
+                "importance": round(float(model.feature_importances_[idx]), 4),
+                "separation": round(float(separation), 4),
+                "class_means": class_means,
+            }
         )
 
-        model.fit(features[:split], rewards[:split])
+    top_importance = sorted(summaries, key=lambda item: item["importance"], reverse=True)[:top_n]
+    top_separation = sorted(summaries, key=lambda item: item["separation"], reverse=True)[:top_n]
+    slice_target_counts: dict[str, dict[int, int]] = {}
+    for slice_name, target in zip(dataset["regime_slices"], dataset["targets"]):
+        target_counts = slice_target_counts.setdefault(slice_name, {})
+        target_counts[int(target)] = target_counts.get(int(target), 0) + 1
 
-        val_pred = model.predict(features[split:])
-        val_mae = mean_absolute_error(rewards[split:], val_pred)
-        val_dir_acc = np.mean(np.sign(val_pred) == np.sign(rewards[split:]))
+    return {
+        "target_mode": target_mode,
+        "target_metric": target_metric,
+        "target_threshold": dataset.get("target_threshold"),
+        "regime_slice": regime_slice or "all",
+        "n_trades": dataset["n_trades"],
+        "class_counts": dataset["class_counts"],
+        "slice_counts": dataset["slice_counts"],
+        "slice_target_counts": slice_target_counts,
+        "top_importance_features": top_importance,
+        "top_separation_features": top_separation,
+    }
 
-        stats = {
-            "n_trades": n,
-            "val_mae": round(val_mae, 4),
-            "val_direction_accuracy": round(val_dir_acc, 4),
-        }
 
-        # Only update if the trade-based model shows signal
-        if val_dir_acc > 0.52:
-            self.predictor.model = model
-            self.predictor.save()
-            stats["updated"] = True
-            logger.info("online_retrain_accepted", **stats)
+def benchmark_regime_slices(
+    trade_logger: Any,
+    min_trades: int = 10,
+    target_mode: str = "binary",
+    strong_move_pct: float = 0.02,
+    min_quality_score: float = 0.0,
+    target_metric: str = "pnl_pct",
+    target_threshold: float | None = None,
+) -> dict[str, Any] | None:
+    """Benchmark learnability separately for each regime slice."""
+    seed_dataset = trade_logger.build_learning_dataset(
+        **_dataset_kwargs(
+            min_trades=1,
+            target_mode=target_mode,
+            strong_move_pct=strong_move_pct,
+            min_quality_score=min_quality_score,
+            balanced=False,
+            target_metric=target_metric,
+            target_threshold=target_threshold,
+            regime_slice=None,
+        ),
+    )
+    if seed_dataset is None:
+        return None
+
+    slice_names = list(dict.fromkeys(seed_dataset["regime_slices"]))
+    results: dict[str, Any] = {}
+    for slice_name in slice_names:
+        if target_mode == "binary":
+            result = benchmark_trade_outcome_models(
+                trade_logger,
+                min_trades=min_trades,
+                min_quality_score=min_quality_score,
+                balanced=False,
+                target_metric=target_metric,
+                target_threshold=target_threshold,
+                regime_slice=slice_name,
+            )
         else:
-            stats["updated"] = False
-            logger.info("online_retrain_rejected_low_accuracy", **stats)
+            result = benchmark_trade_bucket_models(
+                trade_logger,
+                min_trades=min_trades,
+                strong_move_pct=strong_move_pct,
+                min_quality_score=min_quality_score,
+                balanced=False,
+                target_metric=target_metric,
+                target_threshold=target_threshold,
+                regime_slice=slice_name,
+            )
+        if result is not None:
+            results[slice_name] = result
 
-        self._last_retrain = time.time()
-        self._trades_since_retrain = 0
-
-        trade_logger.log_metric("retrain_direction_accuracy", val_dir_acc)
-        trade_logger.log_metric("retrain_mae", val_mae)
-
-        return stats
+    if not results:
+        return None
+    return {
+        "target_mode": target_mode,
+        "target_metric": target_metric,
+        "target_threshold": target_threshold,
+        "slices": results,
+    }
 
 
 def train_all_symbols(

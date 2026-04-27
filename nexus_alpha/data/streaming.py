@@ -12,8 +12,8 @@ from nexus_alpha.data.contracts import IngestionEvent
 from nexus_alpha.data.feature_store import InMemoryFeatureStore
 from nexus_alpha.data.features import FeatureMaterializationWorker, FeatureWorkerStats
 from nexus_alpha.data.ingestion import IngestionPipeline, InMemoryEventBus
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import ExchangeName
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import ExchangeName
 
 logger = get_logger(__name__)
 

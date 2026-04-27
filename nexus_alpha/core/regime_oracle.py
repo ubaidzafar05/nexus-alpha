@@ -20,8 +20,8 @@ import numpy as np
 from scipy import stats
 from scipy.special import logsumexp
 
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import MarketRegime, RegimeState
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import MarketRegime, RegimeState
 
 logger = get_logger(__name__)
 
@@ -236,6 +236,21 @@ class RegimeOracle:
             self._changepoint_prob = self.bocd.update(float(ret))
             self._update_count += 1
 
+        return self._produce_state()
+
+    def update_tick(self, price_delta: float) -> float:
+        """
+        Fast-Lane update for sub-second microstructure mastering.
+        Updates BOCD based on tick-by-tick price deltas.
+        Returns the current changepoint probability.
+        """
+        # We treat price delta as a micro-return step
+        self._changepoint_prob = self.bocd.update(price_delta)
+        self._update_count += 1
+        return self._changepoint_prob
+
+    def _produce_state(self) -> RegimeState:
+        """Internal helper to calculate HMM state and return RegimeState envelope."""
         # Re-fit HMM periodically (every 100 updates or after changepoint)
         if (
             self._update_count - self._last_hmm_fit >= 100

@@ -10,13 +10,13 @@ Three rounds:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import orjson
 
 from nexus_alpha.config import LLMConfig
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import DebateVerdict, Signal
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import DebateVerdict, Signal
 
 logger = get_logger(__name__)
 
@@ -29,7 +29,9 @@ PROPOSAL_PROMPT = """\
 Symbol: {symbol}
 Direction: {direction}
 Confidence: {confidence:.2f}
-Signal Source: {source}
+Source: {source}
+Lineage Depth: {lineage_depth}
+Ancestor: {ancestor_id}
 </trade>
 
 <market_context>
@@ -39,12 +41,17 @@ Trend Strength: {trend_strength:.2f}
 Recent Returns (5-period): {recent_returns}
 </market_context>
 
+<historical_precedents>
+{memories_text}
+</historical_precedents>
+
 <instructions>
 Present a concise investment thesis for this trade. Include:
 1. Primary catalyst driving this signal
 2. Expected holding period and target
 3. Key risk factors you've already considered
-4. What would invalidate this thesis
+4. How your lineage (depth {lineage_depth}) justifies your conviction vs transient variations
+5. What would invalidate this thesis
 
 Be specific. Use numbers. No vague language.
 </instructions>
@@ -78,7 +85,14 @@ Be adversarial but intellectually honest. Cite specific risks.
 """
 
 SYNTHESIS_PROMPT = """\
-<role>You are the Chief Risk Officer making a final trading decision.</role>
+<role>You are the Chief Risk Officer (Meta-Juror) making a final trading decision.</role>
+
+<personality_context>
+The juror panel for this debate includes:
+1. SNIPER JUROR: Highest precision requirements, handles 20% NAV. Vetoes any misalignment with the Macro trend.
+2. TACTICAL JUROR: Generalist, handles 50% NAV. Focuses on risk-reward efficiency.
+3. SCOUT JUROR: Exploration-focused, handles 30% NAV. Open to micro-signal discovery.
+</personality_context>
 
 <proposal>
 {proposal_text}
@@ -97,13 +111,19 @@ Portfolio Heat: {portfolio_heat:.1f}%
 </portfolio_context>
 
 <instructions>
-Make a final recommendation. Output EXACTLY this JSON:
+Make a final recommendation based on the Juror consensus. If the SNIPER JUROR logic contradicts the entry, you must REJECT or REDUCE_SIZE.
+Output EXACTLY this JSON:
 {{
     "recommendation": "proceed" | "reduce_size" | "reject",
     "adjusted_confidence": <0.0 to 1.0>,
     "suggested_size_pct": <0.0 to 20.0>,
-    "reasoning": "<2-3 sentence justification>",
-    "key_risk": "<single most important risk to monitor>"
+    "juror_consensus": {
+        "sniper": "approve" | "reject",
+        "tactical": "approve" | "reject",
+        "scout": "approve" | "reject"
+    },
+    "reasoning": "<2-3 sentence justification reflecting the juror debate>",
+    "key_risk": "<single most important risk noted by the Sniper>"
 }}
 </instructions>
 """
@@ -123,6 +143,20 @@ class DebateContext:
     size_pct: float
     n_positions: int
     portfolio_heat: float
+    historical_memories: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def memories_text(self) -> str:
+        if not self.historical_memories:
+            return "No close historical precedents found."
+        
+        import json
+        lines = []
+        for i, m in enumerate(self.historical_memories):
+            lines.append(f"Precedent {i+1} (Importance: {m.get('importance', 0):.2f}, PnL: {m.get('pnl', 0):.2f}%):")
+            lines.append(f"  Reasoning: {m.get('reasoning', 'N/A')}")
+            lines.append(f"  Outcome: {json.dumps(m.get('outcome', {}))}")
+        return "\n".join(lines)
 
 
 class AgentDebateProtocol:
@@ -154,10 +188,13 @@ class AgentDebateProtocol:
                     direction="LONG" if context.signal.direction > 0 else "SHORT",
                     confidence=context.signal.confidence,
                     source=context.signal.source,
+                    lineage_depth=context.signal.metadata.get("lineage_depth", 0),
+                    ancestor_id=context.signal.metadata.get("ancestor_id", "v6-root"),
                     regime=context.regime,
                     volatility=context.volatility,
                     trend_strength=context.trend_strength,
                     recent_returns=context.recent_returns,
+                    memories_text=context.memories_text,
                 )
             )
 
@@ -186,6 +223,28 @@ class AgentDebateProtocol:
             )
 
             verdict = self._parse_synthesis(synthesis_raw, context.signal)
+
+            try:
+                from nexus_alpha.learning.rft_vault import ARTVault
+                market_ctx = (
+                    f"Regime: {context.regime}\n"
+                    f"Volatility: {context.volatility:.4f}\n"
+                    f"Drawdown: {context.drawdown * 100:.2f}%\n"
+                    f"NAV: ${context.nav:,.2f}"
+                )
+                system_prompt = "You are a Chief Risk Officer synthesizing a debate between a Sniper, Tactical, and Scout juror."
+                vault = ARTVault()
+                traj_id = vault.record_debate(
+                    symbol=context.signal.symbol,
+                    proposal_text=proposal_text,
+                    challenge_text=challenge_text,
+                    synthesis_text=synthesis_raw,
+                    system_prompt=system_prompt,
+                    market_context_prompt=market_ctx
+                )
+                verdict.trajectory_id = traj_id
+            except Exception as e:
+                logger.error("failed_to_record_rft_trajectory", error=str(e))
 
             logger.info(
                 "debate_complete",
@@ -230,7 +289,7 @@ class AgentDebateProtocol:
             end = raw.rindex("}") + 1
             data = orjson.loads(raw[start:end])
 
-            return DebateVerdict(
+            verdict = DebateVerdict(
                 proposed_trade=signal,
                 proposal_strength=0.7,
                 challenge_strength=0.6,
@@ -238,6 +297,14 @@ class AgentDebateProtocol:
                 adjusted_confidence=float(data.get("adjusted_confidence", signal.confidence * 0.7)),
                 reasoning=data.get("reasoning", "No reasoning provided."),
             )
+
+            # Sniper Veto Enforcement: If sniper juror explicitly rejected, enforce rejection
+            jurors = data.get("juror_consensus", {})
+            if jurors.get("sniper") == "reject" and verdict.synthesis_recommendation == "proceed":
+                verdict.synthesis_recommendation = "reduce_size"
+                verdict.reasoning = f"(Sniper Veto Applied) {verdict.reasoning}"
+
+            return verdict
         except (ValueError, KeyError, orjson.JSONDecodeError):
             return DebateVerdict(
                 proposed_trade=signal,

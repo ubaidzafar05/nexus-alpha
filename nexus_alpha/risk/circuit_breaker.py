@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from nexus_alpha.config import RiskConfig
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import CircuitBreakerLevel
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import CircuitBreakerLevel
 
 logger = get_logger(__name__)
 
@@ -50,6 +50,11 @@ class RiskSnapshot:
     correlation_to_btc: float
     leverage: float
     position_count: int
+    volume_1h: float = 0.0
+    volume_24h_avg: float = 0.0
+
+
+import os
 
 
 class CircuitBreakerSystem:
@@ -122,8 +127,14 @@ class CircuitBreakerSystem:
         "flash_crash": BreakerTrigger(
             name="flash_crash",
             level=CircuitBreakerLevel.EMERGENCY,
-            description="Price drop > 10% in < 5 minutes",
+            description="Price drop > 15% in < 10 minutes",
             check_fn_name="_check_flash_crash",
+        ),
+        "volume_shock_5x": BreakerTrigger(
+            name="volume_shock_5x",
+            level=CircuitBreakerLevel.REDUCED,
+            description="Recent 5m volume > 5x 24h average",
+            check_fn_name="_check_volume_shock",
         ),
     }
 
@@ -138,13 +149,27 @@ class CircuitBreakerSystem:
 
     def __init__(self, risk_config: RiskConfig | None = None):
         self.config = risk_config or RiskConfig()
+        # Allow a PAPER-specific risk relaxation via env var to help long paper accumulation runs.
+        self._paper_relax = str(os.getenv("PAPER_RELAX_RISK", "false")).lower() in ("1", "true", "yes")
+        # Tightened multipliers: previous 2.0/1.5 made breakers effectively toothless during paper runs.
+        self._daily_loss_multiplier = 1.5 if self._paper_relax else 1.0
+        self._flash_crash_multiplier = 1.25 if self._paper_relax else 1.0
+        if self._paper_relax:
+            logger.warning(
+                "paper_relax_risk_enabled",
+                daily_loss_multiplier=self._daily_loss_multiplier,
+                flash_crash_multiplier=self._flash_crash_multiplier,
+                note="Circuit breaker thresholds relaxed for paper trading; DO NOT enable in live.",
+            )
+
         self.state = BreakerState(level=CircuitBreakerLevel.NORMAL)
         self._risk_history: deque[RiskSnapshot] = deque(maxlen=10000)
         self._peak_nav: float = 0.0
         self._day_start_nav: float = 0.0
         self._flash_crash_prices: deque[tuple[datetime, float]] = deque(maxlen=300)
+        self._volume_history: deque[float] = deque(maxlen=288)  # 24 hours of 5m buckets
 
-        logger.info("circuit_breaker_initialized")
+        logger.info("circuit_breaker_initialized", paper_relax=self._paper_relax)
 
     def evaluate(self, snapshot: RiskSnapshot) -> BreakerState:
         """
@@ -216,13 +241,13 @@ class CircuitBreakerSystem:
     # ─── Trigger Check Methods ────────────────────────────────────────────
 
     def _check_daily_loss(self, snap: RiskSnapshot) -> bool:
-        return snap.daily_pnl_pct < -0.01
+        return snap.daily_pnl_pct < -0.01 * self._daily_loss_multiplier
 
     def _check_daily_loss_severe(self, snap: RiskSnapshot) -> bool:
-        return snap.daily_pnl_pct < -0.03
+        return snap.daily_pnl_pct < -0.03 * self._daily_loss_multiplier
 
     def _check_daily_loss_critical(self, snap: RiskSnapshot) -> bool:
-        return snap.daily_pnl_pct < -0.05
+        return snap.daily_pnl_pct < -0.05 * self._daily_loss_multiplier
 
     def _check_volatility_spike(self, snap: RiskSnapshot) -> bool:
         if len(self._risk_history) < 100:
@@ -244,10 +269,10 @@ class CircuitBreakerSystem:
         return snap.correlation_to_btc > 0.85
 
     def _check_flash_crash(self, snap: RiskSnapshot) -> bool:
-        """Check if price dropped > 10% in < 5 minutes."""
+        """Check if price dropped > 15% in < 10 minutes."""
         if len(self._flash_crash_prices) < 2:
             return False
-        cutoff = datetime.utcnow() - timedelta(minutes=5)
+        cutoff = datetime.utcnow() - timedelta(minutes=10)
         recent = [(t, p) for t, p in self._flash_crash_prices if t >= cutoff]
         if len(recent) < 2:
             return False
@@ -256,7 +281,16 @@ class CircuitBreakerSystem:
         if max_price <= 0:
             return False
         drop_pct = (max_price - min_price) / max_price
-        return drop_pct > 0.10
+        
+        # Flash crash must be accompanied by a price deviation from the 1h mean
+        # to avoid triggering on slow, healthy downtrends.
+        return drop_pct > 0.15 * self._flash_crash_multiplier
+
+    def _check_volume_shock(self, snap: RiskSnapshot) -> bool:
+        """Trigger when recent 1h volume > 5x trailing 24h average."""
+        if snap.volume_24h_avg <= 0 or snap.volume_1h <= 0:
+            return False
+        return snap.volume_1h > 5.0 * snap.volume_24h_avg
 
     # ─── Recovery Logic ───────────────────────────────────────────────────
 
@@ -404,15 +438,31 @@ class PreTradeRiskValidator:
         else:
             passed_checks.append(f"Position size: {position_pct:.1%}")
 
-        # Check 3: Portfolio drawdown limit
-        # (This would use live portfolio data in production)
-        passed_checks.append("Drawdown check: OK")
+        # Check 3: Fat Finger check (absolute notional limit)
+        if notional > self.config.max_order_notional_usd:
+            failed_checks.append(
+                f"Order notional ${notional:,.0f} exceeds fat-finger "
+                f"limit ${self.config.max_order_notional_usd:,.0f}"
+            )
+        else:
+            passed_checks.append("Fat finger check: OK")
 
-        # Check 4: Correlated exposure
-        passed_checks.append("Correlation exposure: OK")
+        # Check 4: Asset concentration
+        current_exposure = current_positions.get(symbol, 0.0) * price
+        new_exposure_pct = (current_exposure + notional) / portfolio_nav if portfolio_nav > 0 else 1.0
+        if new_exposure_pct > self.config.max_asset_concentration_pct:
+            failed_checks.append(
+                f"Concentration in {symbol} ({new_exposure_pct:.1%}) exceeds "
+                f"max {self.config.max_asset_concentration_pct:.0%}"
+            )
+        else:
+            passed_checks.append(f"Concentration check: {new_exposure_pct:.1%}")
 
         # Compute max allowed
-        max_size = self.config.max_single_position_pct * portfolio_nav / price if price > 0 else 0
+        max_size = min(
+            self.config.max_single_position_pct * portfolio_nav / price if price > 0 else 0,
+            self.config.max_order_notional_usd / price if price > 0 else 0
+        )
 
         # Apply circuit breaker multiplier
         if self.circuit_breaker:

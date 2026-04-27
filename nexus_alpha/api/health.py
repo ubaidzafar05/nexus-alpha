@@ -14,7 +14,7 @@ from prometheus_client import Gauge, generate_latest
 from nexus_alpha.config import NexusConfig, load_config
 from nexus_alpha.data.feature_store import InMemoryFeatureStore
 from nexus_alpha.data.streaming import FeatureStreamingLoop
-from nexus_alpha.types import ExchangeName
+from nexus_alpha.schema_types import ExchangeName
 
 app = FastAPI(title="NEXUS-ALPHA Control Plane", version="0.1.0")
 config = load_config()

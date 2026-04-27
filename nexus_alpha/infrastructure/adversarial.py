@@ -19,8 +19,8 @@ from typing import Any
 
 import numpy as np
 
-from nexus_alpha.logging import get_logger
-from nexus_alpha.types import MarketRegime
+from nexus_alpha.log_config import get_logger
+from nexus_alpha.schema_types import MarketRegime
 
 logger = get_logger(__name__)
 

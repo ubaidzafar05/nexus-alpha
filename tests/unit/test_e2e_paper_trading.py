@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -146,6 +147,41 @@ class TestE2EPaperTrading:
         # Pipeline reached signal processing (last_signal_at set) with no errors
         assert loop.metrics.last_signal_at > 0
         assert loop.metrics.errors == 0
+
+    @pytest.mark.asyncio
+    async def test_generate_signals_no_trend_filter_ewm_error(self, caplog: pytest.LogCaptureFixture):
+        config = NexusConfig(
+            trading_mode=TradingMode.PAPER,
+            paper_min_signal_confidence=0.30,
+        )
+        signal_engine = SignalFusionEngine()
+        signal_engine.register_defaults()
+        cb = CircuitBreakerSystem(risk_config=config.risk)
+        alerts = MagicMock()
+        alerts.trade_opened = AsyncMock()
+        alerts.circuit_breaker_triggered = AsyncMock()
+        alerts.risk_alert = AsyncMock()
+
+        loop = TradingLoopOrchestrator(
+            config=config,
+            signal_engine=signal_engine,
+            circuit_breaker=cb,
+            alerts=alerts,
+            cycle_interval_s=0.1,
+        )
+
+        fake_redis = FakeRedis()
+        rows = _generate_ohlcv_data(120, base_price=65000.0)
+        for symbol in ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT"]:
+            fake_redis.set(f"ohlcv:{symbol}", json.dumps(rows))
+            fake_redis.set(f"price:{symbol}", str(rows[-1]["close"]))
+        loop._redis = fake_redis
+
+        caplog.set_level(logging.WARNING, logger="nexus_alpha.core.trading_loop")
+        signals = loop._generate_signals(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ADAUSDT"])
+
+        assert isinstance(signals, list)
+        assert "ExponentialMovingWindow" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_blocks_during_crisis(self):

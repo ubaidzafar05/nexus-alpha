@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -82,6 +83,143 @@ class TestTradingLoopInit:
         )
         assert loop._portfolio.nav == 50_000.0
         assert loop._cycle_interval == 30.0
+
+    def test_paper_threshold_override_is_used(self):
+        from nexus_alpha.core.trading_loop import MIN_SIGNAL_CONFIDENCE, TradingLoopOrchestrator
+
+        default_loop = TradingLoopOrchestrator(
+            config=_make_config(),
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=MagicMock(),
+        )
+        assert default_loop._entry_signal_threshold() == MIN_SIGNAL_CONFIDENCE
+
+        override_loop = TradingLoopOrchestrator(
+            config=_make_config(paper_min_signal_confidence=0.33),
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=MagicMock(),
+        )
+        assert override_loop._entry_signal_threshold() == 0.33
+
+    def test_symbols_without_trade_history_are_not_on_cooldown(self):
+        from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
+
+        loop = TradingLoopOrchestrator(
+            config=_make_config(),
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=MagicMock(),
+        )
+
+        assert loop._is_on_cooldown("BTCUSDT") is False
+
+    def test_paper_position_age_override_is_used(self):
+        from nexus_alpha.core.trading_loop import (
+            STALE_POSITION_HOURS_LOSE,
+            STALE_POSITION_HOURS_WIN,
+            TradingLoopOrchestrator,
+        )
+
+        default_loop = TradingLoopOrchestrator(
+            config=_make_config(),
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=MagicMock(),
+        )
+        assert default_loop._position_max_age_hours(0.01) == STALE_POSITION_HOURS_WIN
+        assert default_loop._position_max_age_hours(-0.01) == STALE_POSITION_HOURS_LOSE
+
+        override_loop = TradingLoopOrchestrator(
+            config=_make_config(paper_max_position_age_hours=0.25),
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=MagicMock(),
+        )
+        assert override_loop._position_max_age_hours(0.01) == 0.25
+        assert override_loop._position_max_age_hours(-0.01) == 0.25
+
+    def test_load_portfolio_drops_ghost_positions_without_open_trade(self, tmp_path):
+        from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
+
+        loop = TradingLoopOrchestrator(
+            config=_make_config(),
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=MagicMock(),
+            persist_portfolio=False,
+        )
+        loop._portfolio_file = tmp_path / "portfolio_state.json"
+        loop._portfolio_file.write_text(json.dumps({
+            "nav": 100.0,
+            "cash": 110.0,
+            "total_realized_pnl": 0.0,
+            "positions": [{
+                "symbol": "BTCUSDT",
+                "side": "sell",
+                "quantity": 1.0,
+                "entry_price": 10.0,
+                "current_price": 10.0,
+                "unrealized_pnl": 0.0,
+                "realized_pnl": 0.0,
+                "opened_at": "2026-04-06T00:00:00",
+                "stop_loss": None,
+                "take_profit": None,
+            }],
+        }))
+        loop._trade_logger.get_open_trades = MagicMock(return_value=[])
+
+        loop._load_portfolio()
+
+        assert loop._portfolio.positions == []
+        assert loop._portfolio.cash == pytest.approx(100.0)
+        assert loop._portfolio.nav == pytest.approx(100.0)
+
+    def test_load_portfolio_restores_opened_at_from_matching_trade(self, tmp_path):
+        from nexus_alpha.core.trading_loop import TradingLoopOrchestrator
+
+        loop = TradingLoopOrchestrator(
+            config=_make_config(),
+            signal_engine=SignalFusionEngine(),
+            circuit_breaker=CircuitBreakerSystem(),
+            alerts=MagicMock(),
+            persist_portfolio=False,
+        )
+        loop._portfolio_file = tmp_path / "portfolio_state.json"
+        loop._portfolio_file.write_text(json.dumps({
+            "nav": 100.0,
+            "cash": 70.0,
+            "total_realized_pnl": 0.0,
+            "positions": [{
+                "symbol": "ETHUSDT",
+                "side": "buy",
+                "quantity": 1.5,
+                "entry_price": 20.0,
+                "current_price": 20.0,
+                "unrealized_pnl": 0.0,
+                "realized_pnl": 0.0,
+                "opened_at": "2026-04-05T00:00:00",
+                "stop_loss": None,
+                "take_profit": None,
+            }],
+        }))
+        loop._trade_logger.get_open_trades = MagicMock(return_value=[{
+            "trade_id": "abc123",
+            "symbol": "ETHUSDT",
+            "side": "buy",
+            "entry_price": 20.0,
+            "quantity": 1.5,
+            "timestamp": "2026-04-04T12:34:56",
+        }])
+        loop._trade_logger.log_trade_close = MagicMock()
+
+        loop._load_portfolio()
+
+        assert len(loop._portfolio.positions) == 1
+        assert loop._portfolio.positions[0].opened_at == datetime.fromisoformat("2026-04-04T12:34:56")
+        assert loop._portfolio.positions[0].trade_id == "abc123"
+        loop._trade_logger.log_trade_close.assert_not_called()
 
 
 class TestPositionSizing:
@@ -254,6 +392,7 @@ class TestPaperExecution:
             circuit_breaker=CircuitBreakerSystem(),
             alerts=alerts,
         )
+        loop._trade_logger.log_trade_open = MagicMock()
 
         signal = _make_fused_signal(direction=0.6)
         decision = TradingDecision(
@@ -276,6 +415,10 @@ class TestPaperExecution:
         await loop._execute_decision(decision)
         assert loop.metrics.orders_submitted == 1
         assert len(loop._portfolio.positions) == 1
+        record = loop._trade_logger.log_trade_open.call_args.args[0]
+        assert '"entry_threshold": 0.45' in record.entry_context
+        assert '"paper_max_position_age_hours": null' in record.entry_context
+        assert loop._portfolio.positions[0].trade_id is not None
         alerts.trade_opened.assert_called_once()
 
     @pytest.mark.asyncio

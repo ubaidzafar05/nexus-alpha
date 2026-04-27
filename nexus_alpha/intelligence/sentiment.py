@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 # tokenizers from spawning subprocesses that crash when stdin is closed (daemon mode).
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 if TYPE_CHECKING:
     from nexus_alpha.intelligence.free_llm import FreeLLMClient
@@ -87,6 +87,16 @@ class FinBERTAnalyzer:
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
+            
+        # V6 ULTRA: Skip initialization if no token provided to prevent hung states
+        from nexus_alpha.config import LLMConfig
+        if not LLMConfig().hf_token:
+            logger.warning("skipping_finbert_pipeline_load_no_token")
+            # Return a mock pipeline that returns neutral
+            self._pipeline = lambda x, **kwargs: [{"label": "neutral", "score": 0.0}] * (len(x) if isinstance(x, list) else 1)
+            self._loaded = True
+            return
+
         try:
             from transformers import (  # type: ignore[import]
                 AutoModelForSequenceClassification,

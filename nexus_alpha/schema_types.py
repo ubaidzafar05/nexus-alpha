@@ -130,6 +130,9 @@ class Position:
     opened_at: datetime = field(default_factory=datetime.utcnow)
     stop_loss: float | None = None
     take_profit: float | None = None
+    trade_id: str | None = None
+    trade_id: str | None = None
+    trade_id: str | None = None
 
     @property
     def notional_value(self) -> float:
@@ -179,6 +182,17 @@ class Signal:
     timeframe: str
     features_used: list[str] = field(default_factory=list)
     causal_validated: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FusedSignal:
+    """Result of combining multiple signals."""
+    symbol: str
+    direction: float
+    confidence: float
+    contributing_signals: dict[str, float]
+    timestamp: datetime = field(default_factory=datetime.utcnow)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -242,6 +256,7 @@ class DebateVerdict:
     synthesis_recommendation: str  # "proceed", "reduce_size", "reject"
     adjusted_confidence: float
     reasoning: str
+    trajectory_id: str | None = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 

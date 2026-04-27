@@ -1,0 +1,23 @@
+name: CI - tests & safe_retrain smoke
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e . || true
+      - name: Run full tests (fast)
+        run: pytest -q
+      - name: Run safe_retrain smoke tests
+        run: pytest -q tests/unit/test_safe_retrain.py

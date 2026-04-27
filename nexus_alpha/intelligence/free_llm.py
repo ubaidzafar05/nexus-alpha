@@ -24,7 +24,7 @@ from typing import Any
 import httpx
 
 from nexus_alpha.config import LLMConfig
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 
 logger = get_logger(__name__)
 

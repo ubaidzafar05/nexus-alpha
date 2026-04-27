@@ -1,0 +1,97 @@
+{"event": "nexus_paper_mode", "level": "info", "timestamp": "2026-04-14T14:54:03.999957Z"}
+{"event": "initializing_components", "level": "info", "timestamp": "2026-04-14T14:54:04.026450Z"}
+{"paper_relax": false, "event": "circuit_breaker_initialized", "level": "info", "timestamp": "2026-04-14T14:54:09.345029Z"}
+{"n_regimes": 5, "hazard_rate": 0.004, "event": "regime_oracle_initialized", "level": "info", "timestamp": "2026-04-14T14:54:09.345199Z"}
+{"device": "cpu", "params": 2046215, "event": "world_model_initialized", "level": "info", "timestamp": "2026-04-14T14:54:10.281871Z"}
+{"config": {"rolling_window_days": 60, "cull_bottom_pct": 0.2, "cull_frequency_days": 30, "min_agents": 5, "graduation_stages": ["paper", "micro", "small", "production"], "paper_to_micro_days": 60, "micro_to_small_days": 30, "small_to_prod_days": 60}, "event": "tournament_initialized", "level": "info", "timestamp": "2026-04-14T14:54:10.282371Z"}
+{"path": "data/checkpoints/lightweight_online_reward.pkl", "event": "no_checkpoint_found", "level": "info", "timestamp": "2026-04-14T14:54:10.286492Z"}
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator DummyRegressor from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator DecisionTreeRegressor from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator GradientBoostingRegressor from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator DummyClassifier from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/Users/azt/Library/Python/3.9/lib/python/site-packages/sklearn/base.py:380: InconsistentVersionWarning: Trying to unpickle estimator GradientBoostingClassifier from version 1.8.0 when using version 1.6.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+{"path": "data/checkpoints/lightweight_BTC_USDT_1h.pkl", "stats": 0.5249, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.322062Z"}
+{"symbol": "BTCUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.322142Z"}
+{"path": "data/checkpoints/lightweight_BTC_USDT_4h.pkl", "stats": 0.5175, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.344738Z"}
+{"symbol": "BTCUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.344844Z"}
+{"path": "data/checkpoints/lightweight_BTC_USDT_1d.pkl", "stats": 0.5074, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.366494Z"}
+{"symbol": "BTCUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.366582Z"}
+{"path": "data/checkpoints/lightweight_ETH_USDT_1h.pkl", "stats": 0.5299, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.389738Z"}
+{"symbol": "ETHUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.389864Z"}
+{"path": "data/checkpoints/lightweight_ETH_USDT_4h.pkl", "stats": 0.5285, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.411744Z"}
+{"symbol": "ETHUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.411835Z"}
+{"path": "data/checkpoints/lightweight_ETH_USDT_1d.pkl", "stats": 0.5369, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.433631Z"}
+{"symbol": "ETHUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.433718Z"}
+{"path": "data/checkpoints/lightweight_SOL_USDT_1h.pkl", "stats": 0.5238, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.456850Z"}
+{"symbol": "SOLUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.456940Z"}
+{"path": "data/checkpoints/lightweight_SOL_USDT_4h.pkl", "stats": 0.5037, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.478373Z"}
+{"symbol": "SOLUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.478466Z"}
+{"path": "data/checkpoints/lightweight_SOL_USDT_1d.pkl", "stats": 0.4828, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.499871Z"}
+{"symbol": "SOLUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.499955Z"}
+{"path": "data/checkpoints/lightweight_BNB_USDT_1h.pkl", "stats": 0.5208, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.522856Z"}
+{"symbol": "BNBUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.522952Z"}
+{"path": "data/checkpoints/lightweight_BNB_USDT_4h.pkl", "stats": 0.5088, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.549742Z"}
+{"symbol": "BNBUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.549834Z"}
+{"path": "data/checkpoints/lightweight_BNB_USDT_1d.pkl", "stats": 0.5271, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.571208Z"}
+{"symbol": "BNBUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.571298Z"}
+{"path": "data/checkpoints/lightweight_ADA_USDT_1h.pkl", "stats": 0.5314, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.594441Z"}
+{"symbol": "ADAUSDT", "timeframe": "1h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.594535Z"}
+{"path": "data/checkpoints/lightweight_ADA_USDT_4h.pkl", "stats": 0.4971, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.617109Z"}
+{"symbol": "ADAUSDT", "timeframe": "4h", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.617190Z"}
+{"path": "data/checkpoints/lightweight_ADA_USDT_1d.pkl", "stats": 0.4581, "event": "model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.637796Z"}
+{"symbol": "ADAUSDT", "timeframe": "1d", "event": "ml_model_loaded", "level": "info", "timestamp": "2026-04-14T14:54:10.637882Z"}
+{"count": 15, "event": "ml_models_ready", "level": "info", "timestamp": "2026-04-14T14:54:10.637913Z"}
+{"path": "data/checkpoints/regime_oracle.pkl", "regime": "crisis", "buffer_size": 200, "updates": 1736, "event": "regime_oracle_restored", "level": "info", "timestamp": "2026-04-14T14:54:10.638719Z"}
+{"nav": "100000.00", "cash": "100000.00", "positions": 0, "event": "portfolio_restored", "level": "info", "timestamp": "2026-04-14T14:54:10.639878Z"}
+{"agent_count": 10, "event": "openclaw_network_initialized", "level": "info", "timestamp": "2026-04-14T14:54:10.640022Z"}
+{"trading_mode": "paper", "circuit_breaker": "enabled", "llm_backend": "http://localhost:11434", "event": "system_initialized", "level": "info", "timestamp": "2026-04-14T14:54:10.640086Z"}
+DEBUG: Preparing API Server on port 8000...
+╔══════════════════════════════════════════╗
+║   NEXUS-ALPHA v3.0 — Free Edition        ║
+╚══════════════════════════════════════════╝
+  Mode:     paper
+  LLM:      Ollama (qwen3:8b)
+  Kafka:    localhost:9092
+  Monthly cost: $0.00
+  Press Ctrl+C to stop.
+
+{"event": "sentiment_redis_connected", "level": "info", "timestamp": "2026-04-14T14:54:10.868734Z"}
+{"event": "sentiment_kafka_producer_ready", "level": "info", "timestamp": "2026-04-14T14:54:11.073118Z"}
+{"interval_minutes": 15, "tracked_assets": ["BTC", "ETH", "SOL", "BNB", "ADA", "AVAX", "MATIC", "DOT", "LINK", "UNI"], "event": "sentiment_pipeline_starting", "level": "info", "timestamp": "2026-04-14T14:54:11.073212Z"}
+{"agents": 10, "event": "openclaw_network_started", "level": "info", "timestamp": "2026-04-14T14:54:11.073425Z"}
+{"check_count": 0, "event": "watchdog_started", "level": "info", "timestamp": "2026-04-14T14:54:11.073472Z"}
+{"mode": "paper", "cycle_interval": 60.0, "nav": 100000.0, "event": "trading_loop_started", "level": "info", "timestamp": "2026-04-14T14:54:11.075041Z"}
+{"nav": "100000", "positions": 0, "exposure": "0.0%", "event": "cycle_start", "level": "info", "timestamp": "2026-04-14T14:54:11.075088Z"}
+{"regimes": {"0": "trending_up", "1": "sideways", "2": "trending_down", "3": "trending_down"}, "event": "regime_detector_fitted", "level": "info", "timestamp": "2026-04-14T14:54:11.388622Z"}
+{"signal": "vpin", "estimate": "nan", "p_value": "0.000", "is_valid": false, "event": "causal_validation_complete", "level": "info", "timestamp": "2026-04-14T14:54:12.184473Z"}
+{"signal": "rsi_14", "estimate": "nan", "p_value": "0.000", "is_valid": false, "event": "causal_validation_complete", "level": "info", "timestamp": "2026-04-14T14:54:12.976447Z"}
+{"signal": "rsi_7", "estimate": "nan", "p_value": "0.000", "is_valid": false, "event": "causal_validation_complete", "level": "info", "timestamp": "2026-04-14T14:54:13.698928Z"}
+{"signal": "macd", "estimate": "nan", "p_value": "0.000", "is_valid": false, "event": "causal_validation_complete", "level": "info", "timestamp": "2026-04-14T14:54:14.490813Z"}
+{"signal": "bollinger_position", "estimate": "nan", "p_value": "0.000", "is_valid": false, "event": "causal_validation_complete", "level": "info", "timestamp": "2026-04-14T14:54:15.557696Z"}
+{"signal": "obv", "estimate": "nan", "p_value": "0.000", "is_valid": false, "event": "causal_validation_complete", "level": "info", "timestamp": "2026-04-14T14:54:16.350963Z"}
+{"signal": "advanced_vpin", "estimate": "nan", "p_value": "0.000", "is_valid": false, "event": "causal_validation_complete", "level": "info", "timestamp": "2026-04-14T14:54:17.149307Z"}
+/Users/azt/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+'(ReadTimeoutError("HTTPSConnectionPool(host='huggingface.co', port=443): Read timed out. (read timeout=10)"), '(Request ID: 562a9fde-9fe0-49b7-9d89-f7ad22a571fe)')' thrown while requesting HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/tokenizer_config.json
+Retrying in 1s [Retry 1/5].
+'(ReadTimeoutError("HTTPSConnectionPool(host='huggingface.co', port=443): Read timed out. (read timeout=10)"), '(Request ID: 31649680-dc4b-4845-a89e-44f1058a3ea7)')' thrown while requesting HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/tokenizer_config.json
+Retrying in 2s [Retry 2/5].
+'(ReadTimeoutError("HTTPSConnectionPool(host='huggingface.co', port=443): Read timed out. (read timeout=10)"), '(Request ID: 0e58bf04-445d-4431-a385-4cdabde3a90d)')' thrown while requesting HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/tokenizer_config.json
+Retrying in 4s [Retry 3/5].
+'(ReadTimeoutError("HTTPSConnectionPool(host='huggingface.co', port=443): Read timed out. (read timeout=10)"), '(Request ID: 6e7aec2f-35ca-4a4d-937e-0170e72e5f8e)')' thrown while requesting HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/tokenizer_config.json
+Retrying in 8s [Retry 4/5].
+'(ReadTimeoutError("HTTPSConnectionPool(host='huggingface.co', port=443): Read timed out. (read timeout=10)"), '(Request ID: 141b42fc-a6b8-4083-aa94-d2e20485c717)')' thrown while requesting HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/tokenizer_config.json
+Retrying in 8s [Retry 5/5].
+'(ReadTimeoutError("HTTPSConnectionPool(host='huggingface.co', port=443): Read timed out. (read timeout=10)"), '(Request ID: 5f11dcdf-fa9c-46b7-9d31-261620bf7d03)')' thrown while requesting HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/tokenizer_config.json
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

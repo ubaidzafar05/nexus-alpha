@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from nexus_alpha.types import ExchangeName, OrderSide, OrderType
+from nexus_alpha.schema_types import ExchangeName, OrderSide, OrderType
 
 
 class OrderRequest(BaseModel):

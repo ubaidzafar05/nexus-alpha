@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS-ALPHA | Trading Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        navy: { 950: '#05070A', 900: '#0B0E14', 800: '#151921', 700: '#1C242F' },
+                        neon: { green: '#00FF94', red: '#FF3B3B', blue: '#00D1FF', purple: '#BD00FF' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass { background: rgba(11, 14, 20, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.05); }
+        .tab-active { color: #00FF94; border-bottom: 2px solid #00FF94; }
+        .neon-glow { text-shadow: 0 0 10px rgba(0,255,148,0.4); }
+        .neon-border:hover { border-color: #00FF94; box-shadow: 0 0 20px rgba(0,255,148,0.1); transition: all 0.3s ease; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #05070A; }
+        ::-webkit-scrollbar-thumb { background: #1C242F; border-radius: 10px; }
+        .panel-h { height: calc(100vh - 160px); }
+    </style>
+</head>
+<body class="bg-navy-950 text-gray-400 font-sans antialiased overflow-hidden h-screen">
+
+    <!-- Header / Navigation -->
+    <nav class="h-14 border-b border-white/5 flex items-center justify-between px-6 glass z-50">
+        <div class="flex items-center gap-10">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 bg-neon-green rounded flex items-center justify-center">
+                    <i data-lucide="crosshair" class="text-navy-900 w-4 h-4"></i>
+                </div>
+                <span class="text-lg font-bold tracking-tighter text-white">NEXUS<span class="text-neon-green">TERMINAL</span></span>
+            </div>
+            
+            <div class="flex gap-8 text-xs font-bold uppercase tracking-widest h-full">
+                <button onclick="switchTab('dashboard')" id="tab-dashboard" class="h-14 flex items-center tab-active hover:text-white transition-colors">Commander</button>
+                <button onclick="switchTab('terminal')" id="tab-terminal" class="h-14 flex items-center hover:text-white transition-colors">Terminal</button>
+                <button onclick="switchTab('journal')" id="tab-journal" class="h-14 flex items-center hover:text-white transition-colors">Journal</button>
+                <button onclick="switchTab('genealogy')" id="tab-genealogy" class="h-14 flex items-center hover:text-white transition-colors">Genealogy</button>
+                <button onclick="switchTab('analytics')" id="tab-analytics" class="h-14 flex items-center hover:text-white transition-colors">Analytics</button>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <div id="freshness-tag" class="px-3 py-1 bg-gray-500/10 border border-gray-500/20 rounded-full flex items-center gap-2" title="Bot heartbeat freshness">
+                <span id="freshness-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+                <span class="text-[10px] font-bold text-gray-400 uppercase" id="freshness-text">NO SIGNAL</span>
+                <span class="text-[9px] font-mono text-gray-500" id="freshness-age">--</span>
+            </div>
+            <div id="bot-status-tag" class="px-3 py-1 bg-neon-green/10 border border-neon-green/20 rounded-full flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-neon-green animate-pulse"></span>
+                <span class="text-[10px] font-bold text-neon-green uppercase" id="bot-status-text">AUTONOMOUS</span>
+            </div>
+            <div id="clock" class="text-[10px] font-mono text-gray-500"></div>
+        </div>
+    </nav>
+
+    <!-- Content Sections -->
+    <main class="p-6">
+        
+        <!-- DASHBOARD TAB -->
+        <div id="section-dashboard" class="space-y-6">
+            <!-- Live Portfolio Strip -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-green">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Portfolio NAV</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="live-nav">$0</div>
+                    <div class="text-[10px] font-mono text-gray-500 mt-1" id="live-nav-delta">--</div>
+                </div>
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-blue">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Cash</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="live-cash">$0</div>
+                </div>
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-purple">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Realized PnL</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="live-realized">$0</div>
+                </div>
+                <div class="glass p-5 rounded-xl border-l-4 border-orange-500">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Open Positions</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="live-positions">0</div>
+                </div>
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-red">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Cycle #</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="live-cycle">0</div>
+                    <div class="text-[10px] font-mono text-gray-500 mt-1" id="live-cb">CB L0</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <!-- Mini Stats -->
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-green">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Win Rate</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="dash-winrate">00.0%</div>
+                </div>
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-blue">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Profit Factor</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="dash-pf">0.00</div>
+                </div>
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-purple">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Max Drawdown</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="dash-mdd">0.00%</div>
+                </div>
+                <div class="glass p-5 rounded-xl border-l-4 border-neon-red">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Trades (24h)</div>
+                    <div class="text-2xl font-bold text-white tracking-tight" id="dash-trades">0</div>
+                    <div class="text-[10px] font-mono text-gray-500 mt-1" id="dash-trades-pnl">--</div>
+                </div>
+            </div>
+
+            <!-- V4 INTELLIGENCE MONITOR -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass p-6 rounded-2xl border border-white/5 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
+                        <i data-lucide="shield-check" class="w-16 h-16 text-neon-green"></i>
+                    </div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-neon-green animate-pulse"></span>
+                            NEXUS-ULTRA Signal Integrity
+                        </h3>
+                        <div class="text-[10px] font-mono text-neon-green" id="v4-pruning-rate">PRUNING: 00.0%</div>
+                    </div>
+                    <div id="v4-integrity-chart" class="h-40"></div>
+                </div>
+                
+                <div class="glass p-6 rounded-2xl border border-white/5 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
+                        <i data-lucide="zap" class="w-16 h-16 text-neon-blue"></i>
+                    </div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-neon-blue animate-pulse"></span>
+                            NEXUS-ULTRA Efficiency
+                        </h3>
+                        <div class="text-[10px] font-mono text-neon-blue" id="v4-slippage-val">SLIPPAGE: 0.0 BPS</div>
+                    </div>
+                    <div id="v4-efficiency-chart" class="h-40"></div>
+                </div>
+
+                <div class="glass p-6 rounded-2xl border border-white/5 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
+                        <i data-lucide="activity" class="w-16 h-16 text-neon-purple"></i>
+                    </div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-neon-purple animate-pulse"></span>
+                            Microstructure Heat
+                        </h3>
+                        <div class="flex flex-col items-end gap-1">
+                            <div class="text-[10px] font-mono text-neon-purple" id="v6-vpin-val">VPIN: 0.00</div>
+                            <div class="text-[10px] font-mono text-neon-purple" id="v6-ofi-val">OFI: 0.0</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-center h-40">
+                        <div class="w-full space-y-4 px-4">
+                            <div class="space-y-1">
+                                <div class="flex justify-between text-[10px] uppercase font-bold text-gray-500">
+                                    <span>Informed Trading (VPIN)</span>
+                                    <span id="vpin-perc-text">0%</span>
+                                </div>
+                                <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                    <div id="vpin-bar" class="h-full bg-neon-purple transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="space-y-1">
+                                <div class="flex justify-between text-[10px] uppercase font-bold text-gray-500">
+                                    <span>Flow Imbalance (OFI)</span>
+                                    <span id="ofi-perc-text">0%</span>
+                                </div>
+                                <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                                    <div id="ofi-bar" class="h-full bg-neon-blue transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="text-[9px] text-gray-600 font-mono italic text-center">
+                                * Aggregated Max across active symbol swarm
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 glass p-6 rounded-2xl h-[450px] relative">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-sm font-bold text-white uppercase tracking-wider">Tournament Progress</h3>
+                        <div class="text-[10px] text-neon-green font-mono">CHAMPION: <span id="dash-champ-id">...</span></div>
+                    </div>
+                    <div id="dash-main-chart" class="h-[380px]"></div>
+                </div>
+                
+                <div class="glass p-6 rounded-2xl flex flex-col gap-6">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider">Bot Control Hub</h3>
+                    <div class="flex flex-col gap-3 flex-1">
+                        <button onclick="controlBot('pause')" class="w-full py-4 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center gap-3 hover:bg-orange-500/10 hover:border-orange-500/40 group transition-all">
+                            <i data-lucide="pause-circle" class="w-5 h-5 text-gray-500 group-hover:text-orange-500"></i>
+                            <span class="text-xs font-bold text-white uppercase tracking-widest">Pause Autonomy</span>
+                        </button>
+                        <button onclick="controlBot('resume')" class="w-full py-4 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center gap-3 hover:bg-neon-green/10 hover:border-neon-green/40 group transition-all">
+                            <i data-lucide="play-circle" class="w-5 h-5 text-gray-500 group-hover:text-neon-green"></i>
+                            <span class="text-xs font-bold text-white uppercase tracking-widest">Resume Autonomy</span>
+                        </button>
+                        <div class="mt-auto">
+                            <button onclick="controlBot('market-exit')" class="w-full py-6 bg-neon-red/10 border border-neon-red/30 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-neon-red/20 group transition-all">
+                                <i data-lucide="flame" class="w-6 h-6 text-neon-red animate-pulse"></i>
+                                <span class="text-xs font-bold text-white uppercase tracking-widest">Emergency Market Exit</span>
+                                <span class="text-[9px] text-neon-red/60 uppercase font-bold tracking-tighter">Close all positions instantly</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TERMINAL TAB -->
+        <div id="section-terminal" class="hidden panel-h flex gap-6">
+            <div class="flex-1 glass rounded-2xl relative overflow-hidden flex flex-col">
+                <div class="p-4 border-b border-white/5 flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <select id="symbol-select" class="bg-transparent text-white font-bold text-sm outline-none border-none cursor-pointer">
+                            <option value="BTC/USDT">BTC/USDT 1H</option>
+                            <option value="ETH/USDT">ETH/USDT 1H</option>
+                            <option value="SOL/USDT">SOL/USDT 1H</option>
+                        </select>
+                        <div class="text-xs text-gray-500 font-mono" id="price-hud">...</div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="initTradingChart(true)" class="p-1.5 hover:bg-white/10 rounded-lg transition-colors border border-white/5" title="Refresh Chart">
+                            <i data-lucide="refresh-cw" class="w-3 h-3 text-gray-500"></i>
+                        </button>
+                        <span class="text-[10px] text-gray-500 font-bold uppercase">Chart: TradingView Lightweight</span>
+                    </div>
+                </div>
+                <div id="chart-container" class="flex-1"></div>
+            </div>
+            
+            <div class="w-80 glass rounded-2xl p-6 flex flex-col gap-6">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider">Real-time Alpha</h3>
+                <div class="space-y-4 flex-1 overflow-y-auto pr-2" id="signal-stream">
+                    <!-- Dynamic Signals -->
+                </div>
+                <div class="p-4 bg-white/5 rounded-xl border border-white/10 space-y-2">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase">Market Regime</div>
+                    <div class="text-lg font-bold text-white tracking-widest uppercase" id="term-regime">---</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOURNAL TAB -->
+        <div id="section-journal" class="hidden panel-h glass rounded-2xl flex flex-col">
+            <div class="p-6 border-b border-white/5 flex justify-between items-center">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider">Transaction Ledger</h3>
+                <button onclick="refreshData()" class="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 text-gray-500"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="sticky top-0 bg-navy-900 border-b border-white/5 z-10">
+                        <tr>
+                            <th class="p-4 font-bold uppercase text-gray-500">ID</th>
+                            <th class="p-4 font-bold uppercase text-gray-500">Time</th>
+                            <th class="p-4 font-bold uppercase text-gray-500">Symbol</th>
+                            <th class="p-4 font-bold uppercase text-gray-500">Side</th>
+                            <th class="p-4 font-bold uppercase text-gray-500">Entry</th>
+                            <th class="p-4 font-bold uppercase text-gray-500">Exit</th>
+                            <th class="p-4 font-bold uppercase text-gray-500">PnL %</th>
+                            <th class="p-4 font-bold uppercase text-gray-500">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trade-list">
+                        <!-- Trades arrive here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- GENEALOGY TAB -->
+        <div id="section-genealogy" class="hidden panel-h flex flex-col gap-6">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 overflow-hidden">
+                <div class="lg:col-span-3 glass rounded-2xl flex flex-col">
+                    <div class="p-6 border-b border-white/5 flex justify-between items-center">
+                        <div>
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Genetic Drift Map</h3>
+                            <p class="text-[10px] text-gray-500 uppercase mt-1">Swarm Evolution & Lineage Provenance</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-neon-green"></span><span class="text-[9px] uppercase font-bold">Alpha</span></span>
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-neon-blue"></span><span class="text-[9px] uppercase font-bold">Hedge</span></span>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-8" id="genealogy-tree-container">
+                        <!-- Genetic tree cards will be injected here -->
+                    </div>
+                </div>
+                
+                <div class="glass rounded-2xl p-6 flex flex-col gap-6">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider">Lineage Stats</h3>
+                    <div class="space-y-4" id="genealogy-stats">
+                        <div class="p-4 bg-white/5 rounded-xl border border-white/10">
+                            <div class="text-[10px] font-bold text-gray-500 uppercase">Max Lineage Depth</div>
+                            <div class="text-2xl font-bold text-white tracking-tight" id="stat-max-depth">0</div>
+                        </div>
+                        <div class="p-4 bg-white/5 rounded-xl border border-white/10">
+                            <div class="text-[10px] font-bold text-gray-500 uppercase">Active Hedges</div>
+                            <div class="text-2xl font-bold text-neon-blue tracking-tight" id="stat-hedge-count">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ANALYTICS TAB -->
+        <div id="section-analytics" class="hidden panel-h grid grid-cols-2 gap-6 overflow-y-auto">
+            <div class="glass p-8 rounded-2xl space-y-6">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider">Equity Curve (Realized)</h3>
+                <div id="equity-chart" class="h-[400px]"></div>
+            </div>
+            <div class="glass p-8 rounded-2xl space-y-6">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider">Win/Loss Distribution</h3>
+                <div id="win-loss-chart" class="h-[400px]"></div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- Core State ---
+        let currentTab = 'dashboard';
+        let chart = null;
+        let candleSeries = null;
+        let markerSeries = [];
+        const API_BASE = "http://localhost:8502/api";
+        const WS_URL = "ws://localhost:8502/ws/live";
+        let socket = null;
+
+        // --- Initialization ---
+        lucide.createIcons();
+        function updateClock() {
+            document.getElementById('clock').innerText = new Date().toISOString().replace('T', ' ').substring(0, 19) + " UTC";
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // --- Tab Management ---
+        function switchTab(tabId) {
+            document.getElementById(`section-${currentTab}`).classList.add('hidden');
+            document.getElementById(`tab-${currentTab}`).classList.remove('tab-active');
+            
+            document.getElementById(`section-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('tab-active');
+            
+            currentTab = tabId;
+            if (tabId === 'terminal') initTradingChart();
+            if (tabId === 'analytics') { initAnalyticsCharts(); initWinLossChart(); }
+            if (tabId === 'genealogy') refreshGenealogy();
+            refreshData();
+        }
+
+        // --- API Integration ---
+        function fmtMoney(v) {
+            const n = Number(v || 0);
+            const sign = n < 0 ? '-' : '';
+            const abs = Math.abs(n);
+            if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(2) + 'M';
+            if (abs >= 1e3) return sign + '$' + (abs / 1e3).toFixed(2) + 'K';
+            return sign + '$' + abs.toFixed(2);
+        }
+
+        async function refreshData() {
+            try {
+                const [registry, trades, analytics, control, status, portfolio, analytics24h] = await Promise.all([
+                    fetch(`${API_BASE}/registry`).then(r => r.json()),
+                    fetch(`${API_BASE}/trades`).then(r => r.json()),
+                    fetch(`${API_BASE}/analytics`).then(r => r.json()),
+                    fetch(`${API_BASE}/control/status`).then(r => r.json()),
+                    fetch(`${API_BASE}/bot/status`).then(r => r.json()).catch(() => ({})),
+                    fetch(`${API_BASE}/portfolio`).then(r => r.json()).catch(() => ({})),
+                    fetch(`${API_BASE}/analytics/24h`).then(r => r.json()).catch(() => ({}))
+                ]);
+
+                // Update Overview
+                document.getElementById('dash-winrate').innerText = (analytics.win_rate ?? 0) + '%';
+                document.getElementById('dash-pf').innerText = analytics.profit_factor ?? '0.00';
+                document.getElementById('dash-mdd').innerText = (analytics.max_drawdown ?? 0) + '%';
+                document.getElementById('dash-trades').innerText = analytics24h.trades_24h ?? 0;
+                const pnl24 = analytics24h.pnl_24h_pct;
+                if (typeof pnl24 === 'number') {
+                    const el = document.getElementById('dash-trades-pnl');
+                    el.innerText = (pnl24 >= 0 ? '+' : '') + pnl24.toFixed(2) + '% pnl';
+                    el.className = 'text-[10px] font-mono mt-1 ' + (pnl24 >= 0 ? 'text-neon-green' : 'text-neon-red');
+                }
+                document.getElementById('dash-champ-id').innerText = registry.champion ? registry.champion.id : 'N/A';
+
+                // Live Portfolio Strip
+                if (portfolio && typeof portfolio.nav !== 'undefined') {
+                    document.getElementById('live-nav').innerText = fmtMoney(portfolio.nav);
+                    document.getElementById('live-cash').innerText = fmtMoney(portfolio.cash);
+                    const rpnl = portfolio.realized_pnl || 0;
+                    const rpnlEl = document.getElementById('live-realized');
+                    rpnlEl.innerText = (rpnl >= 0 ? '+' : '') + fmtMoney(rpnl);
+                    rpnlEl.className = 'text-2xl font-bold tracking-tight ' + (rpnl >= 0 ? 'text-neon-green' : 'text-neon-red');
+                    document.getElementById('live-positions').innerText = portfolio.position_count || 0;
+                }
+                if (status && typeof status.cycle_counter !== 'undefined') {
+                    document.getElementById('live-cycle').innerText = status.cycle_counter || 0;
+                    document.getElementById('live-cb').innerText = 'CB L' + (status.cb_level || 0);
+                }
+
+                // Freshness indicator
+                updateFreshness(status);
+
+                // Update Bot Status
+                const statusText = document.getElementById('bot-status-text');
+                const statusTag = document.getElementById('bot-status-tag');
+                const paused = control.paused || (status && status.paused);
+                const blindHalt = status && status.blind_halt;
+                if (blindHalt) {
+                    statusText.innerText = 'BLIND HALT';
+                    statusTag.className = 'px-3 py-1 bg-neon-red/10 border border-neon-red/40 rounded-full flex items-center gap-2';
+                    statusTag.querySelector('span:first-child').className = 'w-2 h-2 rounded-full bg-neon-red animate-pulse';
+                    statusText.className = 'text-[10px] font-bold text-neon-red uppercase';
+                } else if (paused) {
+                    statusText.innerText = 'PAUSED';
+                    statusTag.className = 'px-3 py-1 bg-orange-500/10 border border-orange-500/40 rounded-full flex items-center gap-2';
+                    statusTag.querySelector('span:first-child').className = 'w-2 h-2 rounded-full bg-orange-500';
+                    statusText.className = 'text-[10px] font-bold text-orange-500 uppercase';
+                } else {
+                    statusText.innerText = 'AUTONOMOUS';
+                    statusTag.className = 'px-3 py-1 bg-neon-green/10 border border-neon-green/20 rounded-full flex items-center gap-2';
+                    statusTag.querySelector('span:first-child').className = 'w-2 h-2 rounded-full bg-neon-green animate-pulse';
+                    statusText.className = 'text-[10px] font-bold text-neon-green uppercase';
+                }
+
+                // Update Journal
+                const list = document.getElementById('trade-list');
+                list.innerHTML = trades.map(t => `
+                    <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                        <td class="p-4 font-mono text-gray-500">${t.trade_id.slice(0, 8)}</td>
+                        <td class="p-4">${t.timestamp.replace('T', ' ').slice(0, 16)}</td>
+                        <td class="p-4 font-bold text-white">${t.symbol}</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded ${t.side === 'buy' ? 'bg-neon-green/20 text-neon-green' : 'bg-neon-red/20 text-neon-red'}">${t.side.toUpperCase()}</span></td>
+                        <td class="p-4 text-white font-mono">${t.entry_price.toFixed(2)}</td>
+                        <td class="p-4 text-white font-mono">${t.exit_price ? t.exit_price.toFixed(2) : '-'}</td>
+                        <td class="p-4 font-bold ${t.realized_pnl_pct >= 0 ? 'text-neon-green' : 'text-neon-red'}">${t.realized_pnl_pct.toFixed(2)}%</td>
+                        <td class="p-4 uppercase font-bold text-[10px] ${t.status === 'closed' ? 'text-gray-500' : 'text-neon-blue'}">${t.status}</td>
+                    </tr>
+                `).join('');
+
+                if (currentTab === 'terminal') updateChartMarkers(trades);
+                if (currentTab === 'dashboard') updateTournamentChart(registry);
+            } catch (e) { console.error("Refresh Error:", e); }
+        }
+
+        // --- Tournament Chart ---
+        let tournamentChart = null;
+        async function updateTournamentChart(registry) {
+            const container = document.querySelector("#dash-main-chart");
+            if (!container) return;
+
+            let curveData = null;
+            let label = 'CHAMPION';
+            if (registry && registry.champion) {
+                label = 'CHAMPION (' + String(registry.champion.id).slice(0,8) + ')';
+                if (registry.champion.metrics && Array.isArray(registry.champion.metrics.equity_curve) && registry.champion.metrics.equity_curve.length > 1) {
+                    curveData = registry.champion.metrics.equity_curve;
+                }
+            }
+            // Fallback: derive from real trade journal
+            if (!curveData) {
+                try {
+                    const r = await fetch(`${API_BASE}/equity-curve`);
+                    const j = await r.json();
+                    if (Array.isArray(j.equity_curve) && j.equity_curve.length > 1) {
+                        curveData = j.equity_curve;
+                        label = 'LIVE EQUITY (trades)';
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            if (!curveData) curveData = [10000, 10000];
+
+            const series = [{ name: label, data: curveData }];
+            if (tournamentChart) {
+                tournamentChart.updateSeries(series);
+            } else {
+                tournamentChart = new ApexCharts(container, {
+                    series: series,
+                    chart: { type: 'area', height: 380, background: 'transparent', toolbar: { show: false }, animations: { enabled: false } },
+                    stroke: { curve: 'smooth', width: 2, colors: ['#00FF94'] },
+                    fill: { type: 'gradient', gradient: { opacityFrom: 0.3, opacityTo: 0.02 } },
+                    dataLabels: { enabled: false },
+                    grid: { borderColor: 'rgba(255,255,255,0.05)' },
+                    xaxis: { type: 'numeric', labels: { show: false } },
+                    yaxis: { labels: { formatter: v => '$' + Number(v).toFixed(0) } },
+                    theme: { mode: 'dark' },
+                    tooltip: { theme: 'dark' }
+                });
+                tournamentChart.render();
+            }
+        }
+
+        // --- Freshness Indicator ---
+        function updateFreshness(status) {
+            const dot = document.getElementById('freshness-dot');
+            const text = document.getElementById('freshness-text');
+            const age = document.getElementById('freshness-age');
+            const tag = document.getElementById('freshness-tag');
+            if (!status || typeof status.heartbeat_age_s !== 'number') {
+                dot.className = 'w-2 h-2 rounded-full bg-gray-500';
+                text.innerText = 'NO SIGNAL';
+                text.className = 'text-[10px] font-bold text-gray-400 uppercase';
+                age.innerText = '--';
+                tag.className = 'px-3 py-1 bg-gray-500/10 border border-gray-500/20 rounded-full flex items-center gap-2';
+                return;
+            }
+            const s = status.heartbeat_age_s;
+            let color, label;
+            if (s < 30) { color = 'neon-green'; label = 'LIVE'; }
+            else if (s < 120) { color = 'orange-500'; label = 'STALE'; }
+            else { color = 'neon-red'; label = 'OFFLINE'; }
+            dot.className = `w-2 h-2 rounded-full bg-${color} ${s < 30 ? 'animate-pulse' : ''}`;
+            text.innerText = label;
+            text.className = `text-[10px] font-bold text-${color} uppercase`;
+            age.innerText = s < 60 ? `${Math.round(s)}s` : `${Math.round(s/60)}m`;
+            tag.className = `px-3 py-1 bg-${color}/10 border border-${color}/30 rounded-full flex items-center gap-2`;
+        }
+
+        // --- Signal Stream (Terminal) ---
+        async function refreshSignalStream() {
+            try {
+                const r = await fetch(`${API_BASE}/signals/recent?limit=15`);
+                const sigs = await r.json();
+                const el = document.getElementById('signal-stream');
+                if (!el) return;
+                if (!Array.isArray(sigs) || sigs.length === 0) {
+                    el.innerHTML = '<div class="text-[10px] text-gray-600 font-mono italic text-center py-8">No recent signals. Waiting for the next cycle...</div>';
+                    return;
+                }
+                el.innerHTML = sigs.map(s => {
+                    const dir = (s.direction || 'HOLD').toUpperCase();
+                    const dirColor = dir === 'BUY' ? 'text-neon-green' : (dir === 'SELL' ? 'text-neon-red' : 'text-gray-400');
+                    const dirBg = dir === 'BUY' ? 'bg-neon-green/10' : (dir === 'SELL' ? 'bg-neon-red/10' : 'bg-white/5');
+                    const conf = typeof s.confidence === 'number' ? (s.confidence * 100).toFixed(0) + '%' : '--';
+                    const ts = s.timestamp ? String(s.timestamp).slice(11, 19) : '';
+                    return `
+                        <div class="p-3 ${dirBg} rounded-lg border border-white/5">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-bold text-white">${s.symbol || '?'}</span>
+                                <span class="text-[9px] font-bold ${dirColor} uppercase tracking-widest">${dir}</span>
+                            </div>
+                            <div class="flex items-center justify-between text-[9px] font-mono text-gray-500">
+                                <span>conf ${conf}</span>
+                                <span>${s.regime || ''} ${ts}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) { console.warn("signal stream error", e); }
+        }
+
+        async function refreshRegime() {
+            try {
+                const r = await fetch(`${API_BASE}/regime`);
+                const j = await r.json();
+                const el = document.getElementById('term-regime');
+                if (!el) return;
+                const name = (j.name || 'unknown').toUpperCase();
+                const cp = typeof j.changepoint_probability === 'number' ? j.changepoint_probability : 0;
+                el.innerHTML = `${name} <span class="text-[9px] font-mono text-gray-500">cp ${(cp * 100).toFixed(0)}%</span>`;
+            } catch (e) { /* ignore */ }
+        }
+
+        // --- V4 Sparklines (Signal Integrity + Efficiency) ---
+        let v4IntegrityChart = null, v4EfficiencyChart = null;
+        function sparkOptions(color, series) {
+            return {
+                series: [{ name: 'value', data: series }],
+                chart: { type: 'area', height: 160, background: 'transparent', toolbar: { show: false }, sparkline: { enabled: true }, animations: { enabled: false } },
+                stroke: { curve: 'smooth', width: 2, colors: [color] },
+                fill: { type: 'gradient', gradient: { opacityFrom: 0.4, opacityTo: 0.05 } },
+                dataLabels: { enabled: false },
+                tooltip: { theme: 'dark', fixed: { enabled: false } },
+                theme: { mode: 'dark' }
+            };
+        }
+        function renderSpark(containerId, chartRef, color, series) {
+            const container = document.getElementById(containerId);
+            if (!container) return chartRef;
+            if (chartRef) { chartRef.updateSeries([{ name: 'value', data: series }]); return chartRef; }
+            const c = new ApexCharts(container, sparkOptions(color, series));
+            c.render();
+            return c;
+        }
+
+        // --- Charting Logic ---
+        function initTradingChart(force = false) {
+            if (chart && !force || typeof LightweightCharts === 'undefined') {
+                if (typeof LightweightCharts === 'undefined') {
+                    console.warn("Waiting for Lightweight Charts library...");
+                    setTimeout(() => initTradingChart(force), 500);
+                }
+                return;
+            }
+            
+            const container = document.getElementById('chart-container');
+            if (!container || container.clientWidth === 0) {
+                // Layout not ready, retry
+                setTimeout(() => initTradingChart(force), 100);
+                return;
+            }
+
+            if (force && chart) {
+                chart.remove();
+                chart = null;
+            }
+
+            try {
+                chart = LightweightCharts.createChart(container, {
+                    layout: { background: { color: 'transparent' }, textColor: '#6B7280' },
+                    grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                    timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true }
+                });
+
+                candleSeries = chart.addCandlestickSeries({
+                    upColor: '#00FF94', downColor: '#FF3B3B', borderUpColor: '#00FF94', borderDownColor: '#FF3B3B',
+                    wickUpColor: '#00FF94', wickDownColor: '#FF3B3B'
+                });
+
+                const symbol = document.getElementById('symbol-select').value;
+                fetch(`${API_BASE}/candles/${symbol.replace('/', '_')}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.error) return;
+                        candleSeries.setData(data);
+                        chart.timeScale().fitContent();
+                        
+                        // Load historic markers immediately
+                        fetch(`${API_BASE}/trades?symbol=${symbol}`)
+                            .then(r => r.json())
+                            .then(trades => updateChartMarkers(trades));
+                    });
+
+                new ResizeObserver(entries => {
+                    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+                }).observe(container);
+            } catch (err) {
+                console.error("Dashboard Chart Initialization Failed:", err);
+            }
+        }
+
+        function updateChartMarkers(trades) {
+            if (!candleSeries) return;
+            const markers = [];
+            trades.forEach(t => {
+                const ts = Math.floor(new Date(t.timestamp).getTime() / 1000);
+                markers.push({
+                    time: ts,
+                    position: t.side === 'buy' ? 'belowBar' : 'aboveBar',
+                    color: t.side === 'buy' ? '#00FF94' : '#FF3B3B',
+                    shape: t.side === 'buy' ? 'arrowUp' : 'arrowDown',
+                    text: t.side.toUpperCase()
+                });
+            });
+            candleSeries.setMarkers(markers.sort((a,b) => a.time - b.time));
+        }
+
+        // --- Analytics Charts ---
+        let equityChart = null;
+        function initAnalyticsCharts() {
+            fetch(`${API_BASE}/trades?limit=500`)
+                .then(r => r.json())
+                .then(trades => {
+                    const sorted = trades.filter(t => t.status === 'closed').sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+                    let cum = 10000;
+                    const curve = sorted.map(t => {
+                        cum *= (1 + t.realized_pnl_pct / 100);
+                        return { x: t.timestamp, y: cum };
+                    });
+
+                    if (equityChart) equityChart.destroy();
+                    equityChart = new ApexCharts(document.querySelector("#equity-chart"), {
+                        series: [{ name: 'Portfolio Value', data: curve }],
+                        chart: { type: 'area', height: 400, background: 'transparent', toolbar: { show: false } },
+                        stroke: { curve: 'smooth', width: 2, colors: ['#00FF94'] },
+                        fill: { type: 'gradient', gradient: { opacityFrom: 0.3, opacityTo: 0.05 } },
+                        dataLabels: { enabled: false },
+                        xaxis: { type: 'datetime' },
+                        yaxis: { labels: { formatter: function(val) { return val.toFixed(2); } } },
+                        theme: { mode: 'dark' }
+                    });
+                    equityChart.render();
+                });
+        }
+
+        let winLossChart = null;
+        function initWinLossChart() {
+            fetch(`${API_BASE}/internal/performance`)
+                .then(r => r.json())
+                .then(data => {
+                    const wins = data.wins || 0;
+                    const losses = data.losses || 0;
+                    if (winLossChart) winLossChart.destroy();
+                    winLossChart = new ApexCharts(document.querySelector("#win-loss-chart"), {
+                        series: [wins, losses],
+                        chart: { type: 'donut', height: 300, background: 'transparent' },
+                        labels: ['Wins', 'Losses'],
+                        colors: ['#00FF94', '#FF3B3B'],
+                        theme: { mode: 'dark' },
+                        dataLabels: { enabled: false },
+                        stroke: { show: true, colors: ['#0B0E14'], width: 2 },
+                        legend: { position: 'bottom' }
+                    });
+                    winLossChart.render();
+                }).catch(e => console.error("WinLoss init error:", e));
+        }
+
+        // --- Actions ---
+        async function controlBot(action) {
+            await fetch(`${API_BASE}/control/${action}`, { method: 'POST' });
+            refreshData();
+        }
+
+        // --- WebSocket ---
+        function connectWS() {
+            socket = new WebSocket(WS_URL);
+            socket.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'NEW_TRADE') {
+                    console.log("Real-time Trade Event:", msg.data);
+                    refreshData(); // Refresh UI lists
+                    if (currentTab === 'terminal') {
+                        // Optimistically update markers if same symbol
+                        const currentSymbol = document.getElementById('symbol-select').value.replace('/', '');
+                        const tradeSymbol = msg.data.symbol.replace('/', '');
+                        if (currentSymbol === tradeSymbol) {
+                             fetch(`${API_BASE}/trades?symbol=${currentSymbol}`)
+                                .then(r => r.json())
+                                .then(trades => updateChartMarkers(trades));
+                        }
+                    }
+                }
+                if (msg.type === 'REGISTRY_UPDATE') {
+                    if (currentTab === 'dashboard') updateTournamentChart(msg.data);
+                }
+                if (msg.type === 'HEARTBEAT') {
+                    const d = msg.data || {};
+                    // Live freshness pill (compute age from heartbeat)
+                    if (d.heartbeat) {
+                        const ageS = (Date.now() - new Date(d.heartbeat + 'Z').getTime()) / 1000;
+                        updateFreshness({ heartbeat_age_s: Math.max(0, ageS), heartbeat: d.heartbeat });
+                    }
+                    // Live portfolio
+                    if (d.portfolio) {
+                        document.getElementById('live-nav').innerText = fmtMoney(d.portfolio.nav);
+                        document.getElementById('live-cash').innerText = fmtMoney(d.portfolio.cash);
+                        const rpnl = d.portfolio.realized_pnl || 0;
+                        const rpnlEl = document.getElementById('live-realized');
+                        rpnlEl.innerText = (rpnl >= 0 ? '+' : '') + fmtMoney(rpnl);
+                        rpnlEl.className = 'text-2xl font-bold tracking-tight ' + (rpnl >= 0 ? 'text-neon-green' : 'text-neon-red');
+                        document.getElementById('live-positions').innerText = d.portfolio.position_count || 0;
+                    }
+                    if (typeof d.cycle_counter !== 'undefined') {
+                        document.getElementById('live-cycle').innerText = d.cycle_counter;
+                    }
+                    if (typeof d.cb_level !== 'undefined') {
+                        document.getElementById('live-cb').innerText = 'CB L' + d.cb_level;
+                    }
+                    // Live regime push
+                    if (d.regime && currentTab === 'terminal') {
+                        const el = document.getElementById('term-regime');
+                        if (el) {
+                            const name = (d.regime.name || 'unknown').toUpperCase();
+                            const cp = d.regime.changepoint_probability || 0;
+                            el.innerHTML = `${name} <span class="text-[9px] font-mono text-gray-500">cp ${(cp * 100).toFixed(0)}%</span>`;
+                        }
+                    }
+                    // Microstructure bars
+                    if (d.microstructure) {
+                        const vpin = d.microstructure.vpin_max || 0;
+                        const ofi = Math.abs(d.microstructure.ofi_max || 0);
+                        const vEl = document.getElementById('v6-vpin-val');
+                        const oEl = document.getElementById('v6-ofi-val');
+                        if (vEl) vEl.innerText = `VPIN: ${vpin.toFixed(2)}`;
+                        if (oEl) oEl.innerText = `OFI: ${ofi.toFixed(1)}`;
+                        const vpinPerc = Math.min(100, Math.max(0, vpin * 100));
+                        const ofiPerc = Math.min(100, (ofi / 200) * 100);
+                        const vb = document.getElementById('vpin-bar'); if (vb) vb.style.width = `${vpinPerc}%`;
+                        const ob = document.getElementById('ofi-bar'); if (ob) ob.style.width = `${ofiPerc}%`;
+                        const vt = document.getElementById('vpin-perc-text'); if (vt) vt.innerText = `${vpinPerc.toFixed(0)}%`;
+                        const ot = document.getElementById('ofi-perc-text'); if (ot) ot.innerText = `${ofiPerc.toFixed(0)}%`;
+                    }
+                    // Signal stream refresh (debounced by interval above)
+                    if (currentTab === 'terminal') refreshSignalStream();
+                }
+            };
+            socket.onclose = () => {
+                console.warn("WebSocket closed. Retrying in 5s...");
+                setTimeout(connectWS, 5000);
+            };
+        }
+
+        // Start Up
+        refreshData();
+        connectWS();
+        setInterval(refreshData, 10000);
+        // --- V4 TELEMETRY REFRESH ---
+        async function refreshV4Telemetry() {
+            try {
+                const response = await fetch(`${API_BASE}/v4/telemetry`);
+                const data = await response.json();
+                if (data.error) return;
+
+                const pruning = data.filter(r => r.metric_name === 'pruning_rate_causal');
+                const slippage = data.filter(r => r.metric_name === 'avg_slippage_bps');
+
+                if (pruning.length > 0) {
+                    const latest = pruning[0].metric_value;
+                    document.getElementById('v4-pruning-rate').innerText = `PRUNING: ${latest.toFixed(1)}%`;
+                }
+                if (slippage.length > 0) {
+                    const latest = slippage[0].metric_value;
+                    document.getElementById('v4-slippage-val').innerText = `SLIPPAGE: ${latest.toFixed(1)} BPS`;
+                }
+
+                const vpin = data.filter(r => r.metric_name === 'tick_vpin_max');
+                const ofi = data.filter(r => r.metric_name === 'ofi_l2_max');
+
+                if (vpin.length > 0) {
+                    const latest = vpin[0].metric_value;
+                    document.getElementById('v6-vpin-val').innerText = `VPIN: ${latest.toFixed(2)}`;
+                    const perc = Math.min(100, Math.max(0, latest * 100));
+                    document.getElementById('vpin-bar').style.width = `${perc}%`;
+                    document.getElementById('vpin-perc-text').innerText = `${perc.toFixed(0)}%`;
+                }
+                if (ofi.length > 0) {
+                    const latest = Math.abs(ofi[0].metric_value);
+                    document.getElementById('v6-ofi-val').innerText = `OFI: ${latest.toFixed(1)}`;
+                    // Threshold OFI at 200 for 100% visualization
+                    const perc = Math.min(100, (latest / 200) * 100);
+                    document.getElementById('ofi-bar').style.width = `${perc}%`;
+                    document.getElementById('ofi-perc-text').innerText = `${perc.toFixed(0)}%`;
+                }
+
+                // Sparklines: Signal Integrity (pruning rate over time) + Efficiency (slippage bps)
+                if (pruning.length > 0) {
+                    const series = pruning.slice().reverse().map(r => Number(r.metric_value) || 0);
+                    v4IntegrityChart = renderSpark('v4-integrity-chart', v4IntegrityChart, '#00FF94', series);
+                }
+                if (slippage.length > 0) {
+                    const series = slippage.slice().reverse().map(r => Number(r.metric_value) || 0);
+                    v4EfficiencyChart = renderSpark('v4-efficiency-chart', v4EfficiencyChart, '#00D1FF', series);
+                }
+            } catch (e) { console.error("Telemetry error", e); }
+        }
+
+        setInterval(refreshV4Telemetry, 30000);
+        refreshV4Telemetry();
+
+        // Terminal streams refresh
+        setInterval(() => { refreshSignalStream(); refreshRegime(); }, 5000);
+        refreshSignalStream();
+        refreshRegime();
+
+        // --- GENEALOGY LOGIC ---
+        async function refreshGenealogy() {
+            try {
+                const response = await fetch(`${API_BASE}/swarm/genealogy`);
+                const data = await response.json();
+                if (data.error || !data.swarm) return;
+
+                const container = document.getElementById('genealogy-tree-container');
+                const maxDepthEl = document.getElementById('stat-max-depth');
+                const hedgeCountEl = document.getElementById('stat-hedge-count');
+
+                let maxDepth = 0;
+                let hedgeCount = 0;
+
+                // Sort by lineage depth then ID for grouping
+                const sortedAgents = data.swarm.sort((a,b) => a.lineage_depth - b.lineage_depth || a.agent_id.localeCompare(b.agent_id));
+                
+                container.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        ${sortedAgents.map(agent => {
+                            maxDepth = Math.max(maxDepth, agent.lineage_depth);
+                            if (agent.is_hedge) hedgeCount++;
+                            
+                            const borderColor = agent.is_hedge ? 'border-neon-blue/30' : 'border-neon-green/30';
+                            const glowColor = agent.is_hedge ? 'shadow-neon-blue/10' : 'shadow-neon-green/10';
+                            const typeLabel = agent.is_hedge ? 'HEDGE' : 'ALPHA';
+                            const typeColor = agent.is_hedge ? 'text-neon-blue' : 'text-neon-green';
+                            const typeBg = agent.is_hedge ? 'bg-neon-blue/10' : 'bg-neon-green/10';
+
+                            return `
+                                <div class="glass p-4 rounded-xl border ${borderColor} hover:scale-[1.02] transition-transform flex flex-col gap-3 shadow-lg ${glowColor}">
+                                    <div class="flex justify-between items-start">
+                                        <div class="flex flex-col">
+                                            <span class="text-[10px] font-mono text-gray-500">PROVENANCE: ${agent.ancestor_id.slice(0,10)}</span>
+                                            <span class="text-xs font-bold text-white tracking-tight truncate w-32">${agent.agent_id}</span>
+                                        </div>
+                                        <span class="px-2 py-0.5 rounded ${typeBg} ${typeColor} text-[8px] font-bold uppercase tracking-widest">${typeLabel}</span>
+                                    </div>
+                                    
+                                    <div class="flex items-center gap-4 py-2 border-y border-white/5">
+                                        <div class="flex flex-col">
+                                            <span class="text-[8px] uppercase font-bold text-gray-600">Depth</span>
+                                            <span class="text-sm font-bold text-white font-mono">${agent.lineage_depth}</span>
+                                        </div>
+                                        <div class="flex flex-col">
+                                            <span class="text-[8px] uppercase font-bold text-gray-600">Weight</span>
+                                            <span class="text-sm font-bold text-white font-mono">${(agent.capital_weight * 100).toFixed(1)}%</span>
+                                        </div>
+                                        <div class="flex flex-col ml-auto">
+                                            <span class="text-[8px] uppercase font-bold text-gray-600">Sharpe</span>
+                                            <span class="text-sm font-bold text-neon-green font-mono">${agent.metrics.sharpe || '0.0'}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex justify-between items-center text-[9px] uppercase font-bold">
+                                        <span class="text-gray-500">Cluster: ${agent.cluster_id}</span>
+                                        <span class="${(agent.metrics.pnl_pct || 0) >= 0 ? 'text-neon-green' : 'text-neon-red'}">${(agent.metrics.pnl_pct || 0) >= 0 ? '+' : ''}${(agent.metrics.pnl_pct || 0).toFixed(2)}%</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+
+                maxDepthEl.innerText = maxDepth;
+                hedgeCountEl.innerText = hedgeCount;
+
+            } catch (e) { console.error("Genealogy Refresh Error:", e); }
+        }
+    </script>
+</body>
+</html>

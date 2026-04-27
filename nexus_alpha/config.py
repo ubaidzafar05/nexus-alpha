@@ -65,6 +65,9 @@ class LLMConfig(BaseSettings):
     # FinBERT — specialized finance sentiment (110M params, CPU-fast, Apache 2.0)
     finbert_enabled: bool = True
     finbert_model_name: str = "ProsusAI/finbert"
+    
+    # HuggingFace Token — for unauthenticated model access (prevents 429s)
+    hf_token: SecretStr = SecretStr("")
 
     # Legacy field aliases — kept for backwards compat with any code that reads them
     primary_model: str = "qwen3:8b"
@@ -112,6 +115,14 @@ class DatabaseConfig(BaseSettings):
             netloc = f"{netloc}:{parsed.port}"
         netloc = f"default:{parsed.password}@{netloc}"
         return urlunparse(parsed._replace(netloc=netloc))
+
+
+class QdrantConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="QDRANT_")
+    url: str = "http://localhost:6333"
+    collection_name: str = "nexus_memories"
+    vector_size: int = 768  # Matches nomic-embed-text
+    distance: str = "Cosine"
 
 
 class KafkaConfig(BaseSettings):
@@ -177,6 +188,8 @@ class RiskConfig(BaseSettings):
     max_daily_loss_pct: float = 0.05
     max_market_participation_rate: float = 0.05
     max_order_book_impact: float = 0.001
+    max_order_notional_usd: float = 100_000.0  # Fat-finger limit
+    max_asset_concentration_pct: float = 0.25   # Max exposure to 1 asset
     circuit_breaker_enabled: bool = True
 
 
@@ -207,6 +220,8 @@ class NexusConfig(BaseSettings):
     trading_mode: TradingMode = TradingMode.PAPER
     log_level: str = "INFO"
     project_root: Path = Path(__file__).parent.parent
+    paper_min_signal_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    paper_max_position_age_hours: float | None = Field(default=None, gt=0.0)
 
     # Sub-configs
     binance: ExchangeConfig = Field(default_factory=ExchangeConfig)
@@ -220,6 +235,7 @@ class NexusConfig(BaseSettings):
     rl_agent: RLAgentConfig = Field(default_factory=RLAgentConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     tournament: TournamentConfig = Field(default_factory=TournamentConfig)
+    qdrant: QdrantConfig = Field(default_factory=QdrantConfig)
 
     @property
     def is_live(self) -> bool:

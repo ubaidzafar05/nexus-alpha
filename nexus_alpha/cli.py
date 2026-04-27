@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 import click
 
 from nexus_alpha.config import NexusConfig, TradingMode, load_config
-from nexus_alpha.logging import get_logger, setup_logging
+from nexus_alpha.log_config import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
@@ -337,6 +337,18 @@ def telegram_test(ctx: click.Context, message: str) -> None:
     click.echo("Done.")
 
 
+@cli.command("run-retrain-watcher")
+@click.option("--interval", default=3600, type=int, help="Seconds between checks")
+@click.pass_context
+def run_retrain_watcher(ctx: click.Context, interval: int) -> None:
+    """Start the background retrain watcher (blocks)."""
+    click.echo(f"Starting retrain watcher (interval={interval}s). Ctrl-C to exit")
+    # Import locally to avoid heavy imports on CLI startup
+    from infra.self_healing.retrain_watcher import retrain_watcher_main
+
+    retrain_watcher_main(interval_s=interval)
+
+
 @cli.command("maintenance-timescale")
 @click.option("--retention-days", default=90, type=int, help="Retention window in days")
 @click.option("--execute", is_flag=True, help="Execute maintenance (default is dry-run)")
@@ -602,6 +614,7 @@ async def _heartbeat(
             lines = [
                 "📊 *NEXUS-ALPHA Heartbeat*",
                 f"• Cycles: `{m.ticks_processed}`",
+                "• Status: " + ("⚠️ *BLIND-HALT (INFRA)*" if m.is_blind_halt else "✅ *ACTIVE*"),
                 f"• Signals: `{m.signals_generated}`",
                 f"• Debates: `{m.debates_triggered}`",
                 f"• Orders: `{m.orders_submitted}` (rejected: `{m.orders_rejected}`)",
@@ -639,6 +652,29 @@ async def _run_system(config: NexusConfig) -> None:
     10. System watchdog
     11. Telegram health notification
     """
+    import uvicorn
+    api_port = int(os.getenv("NEXUS_API_PORT", "8000"))
+    print(f"DEBUG: Preparing API Server on port {api_port}...")
+    
+    api_config = uvicorn.Config(
+        "dashboard.backend.main:app",
+        host="0.0.0.0",
+        port=api_port,
+        log_level="warning",
+        loop="none",           # Don't install a new event loop — reuse the running one
+    )
+    api_server = uvicorn.Server(api_config)
+    api_server.install_signal_handlers = lambda: None  # Prevent signal handler conflict
+    
+    async def _safe_api_start():
+        try:
+            print(f"DEBUG: Task api_server starting on port {api_port}...")
+            logger.info("api_server_starting", port=api_port)
+            await api_server.serve()
+        except Exception as e:
+            print(f"DEBUG: API Server FAILED: {str(e)}")
+            logger.error("api_server_failed", error=str(e))
+
     logger.info("initializing_components")
 
     # ── Core intelligence ─────────────────────────────────────────────────────
@@ -656,14 +692,17 @@ async def _run_system(config: NexusConfig) -> None:
 
     # ── Alerts first — so we can notify on startup/failure ───────────────────
     alerts = TelegramAlerts.from_env()
-    health_status = await _collect_health_status(config)
-    if health_status.get("kafka") != "ok" and config.kafka.bootstrap_servers:
-        logger.warning(
-            "kafka_runtime_disabled",
-            bootstrap=config.kafka.bootstrap_servers,
-            reason="broker_unreachable",
-        )
-        config.kafka.bootstrap_servers = ""
+
+    # REASONING: Concurrent health checks to prevent boot deadlock.
+    async def _boot_health():
+        status = await _collect_health_status(config)
+        if status.get("kafka") != "ok" and config.kafka.bootstrap_servers:
+            logger.warning("kafka_runtime_disabled", bootstrap=config.kafka.bootstrap_servers)
+            config.kafka.bootstrap_servers = ""
+        await alerts.system_health(status)
+        return status
+
+    health_task = asyncio.create_task(_boot_health())
 
     # ── Core modules ──────────────────────────────────────────────────────────
     circuit_breaker = CircuitBreakerSystem(risk_config=config.risk)
@@ -715,23 +754,18 @@ async def _run_system(config: NexusConfig) -> None:
         llm_backend=config.llm.ollama_base_url,
     )
 
-    kafka_bootstrap = (
-        config.kafka.bootstrap_servers
-        if health_status.get("kafka") == "ok"
-        else None
-    )
+    # Initial reports in background too
+    async def _bootstrap_intel():
+        try:
+            initial_reports = await free_intel.run_all()
+            # We'll just use the config value directly, the loop handles offline kafka
+            free_intel.publish_reports(initial_reports, bootstrap_servers=config.kafka.bootstrap_servers)
+            logger.info("free_intelligence_bootstrap_complete", reports=len(initial_reports))
+        except Exception as err:
+            logger.warning("free_intelligence_bootstrap_failed", error=repr(err))
+        free_intel.start_scheduler(bootstrap_servers=config.kafka.bootstrap_servers)
 
-    try:
-        initial_reports = await free_intel.run_all()
-        free_intel.publish_reports(initial_reports, bootstrap_servers=kafka_bootstrap)
-        logger.info(
-            "free_intelligence_bootstrap_complete",
-            reports=len(initial_reports),
-            kafka_enabled=bool(kafka_bootstrap),
-        )
-    except Exception as err:
-        logger.warning("free_intelligence_bootstrap_failed", error=repr(err))
-    free_intel.start_scheduler(bootstrap_servers=kafka_bootstrap)
+    intel_task = asyncio.create_task(_bootstrap_intel())
 
     # ── Start all subsystems ──────────────────────────────────────────────────
     tasks = [
@@ -744,7 +778,10 @@ async def _run_system(config: NexusConfig) -> None:
             _heartbeat(alerts, trading_loop, circuit_breaker, config),
             name="heartbeat",
         ),
+        asyncio.create_task(_safe_api_start(), name="api_server")
     ]
+
+    # uvicorn handling moved to top for boot-priority
 
     click.echo("╔══════════════════════════════════════════╗")
     click.echo("║   NEXUS-ALPHA v3.0 — Free Edition        ║")
@@ -755,19 +792,55 @@ async def _run_system(config: NexusConfig) -> None:
     click.echo("  Monthly cost: $0.00")
     click.echo("  Press Ctrl+C to stop.\n")
 
-    # Notify Telegram on startup
-    startup_msg = (
-        "✅ NEXUS-ALPHA started\n"
-        f"Mode: `{config.trading_mode.value}`\n"
-        f"LLM: `{config.llm.ollama_primary_model}`"
-    )
-    await alerts.send(startup_msg)
-    await alerts.system_health(health_status)
+    # Notify Telegram on startup in background
+    async def _notify_startup():
+        msg = (
+            "✅ NEXUS-ALPHA started\n"
+            f"Mode: `{config.trading_mode.value}`\n"
+            f"LLM: `{config.llm.ollama_primary_model}`"
+        )
+        await alerts.send(msg)
 
+    asyncio.create_task(_notify_startup())
+
+    # ── Task Supervision Loop ────────────────────────────────────────────────
+    logger.info("system_supervision_active")
     try:
-        await asyncio.gather(*tasks)
+        while True:
+            # Audit task health every 30 seconds
+            await asyncio.sleep(30)
+            
+            for t in tasks:
+                if t.done():
+                    try:
+                        # This will re-raise the exception if the task failed
+                        t.result()
+                        logger.warning("task_finished_unexpectedly", task_name=t.get_name())
+                    except asyncio.CancelledError:
+                        logger.info("task_cancelled", task_name=t.get_name())
+                    except Exception as err:
+                        logger.critical(
+                            "critical_task_failed",
+                            task_name=t.get_name(),
+                            error=str(err),
+                            exc_info=True
+                        )
+                        # Optionally: trigger a full system restart by raising
+                        # or try to restart the specific task.
+                        # For now, we've hardened the ingestor internally.
+            
+            # If all core tasks are dead, trigger a terminal exit so Docker restarts us
+            active_core_tasks = [
+                t for t in tasks 
+                if not t.done() and t.get_name() in {"live_ingestor", "trading_loop"}
+            ]
+            if not active_core_tasks:
+                logger.critical("all_core_tasks_dead_triggering_reboot")
+                break
+
     except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("shutdown_requested")
+    finally:
         trading_loop.stop()
         sentiment_runner.stop()
         ingestor.stop()
@@ -775,12 +848,11 @@ async def _run_system(config: NexusConfig) -> None:
         await openclaw.stop_all()
         await watchdog.stop()
         for t in tasks:
-            t.cancel()
+            if not t.done():
+                t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await alerts.send("🛑 NEXUS-ALPHA stopped")
         logger.info("nexus_stopped")
-    finally:
-        await alerts.aclose()
 
 
 def main() -> None:
@@ -1360,5 +1432,98 @@ def trade_stats(ctx: click.Context) -> None:
         click.echo(f"  {t['symbol']} {t['side']} @ {t['entry_price']:.2f}")
 
 
+@cli.command()
+@click.option("--symbol", default="BTC/USDT", help="Symbol to optimize")
+@click.option("--timeframe", default="1h", help="Timeframe to optimize")
+@click.option("--trials", default=20, type=int, help="Number of Optuna trials")
+@click.pass_context
+def optimize(ctx: click.Context, symbol: str, timeframe: str, trials: int) -> None:
+    """Run Optuna hyperparameter optimization for signal weights."""
+    from nexus_alpha.learning.signal_optimizer import SignalOptimizer
+    
+    click.echo(f"🎯 Starting optimization for {symbol} ({timeframe})...")
+    optimizer = SignalOptimizer(symbol=symbol, timeframe=timeframe, n_trials=trials)
+    best_params = optimizer.run()
+    
+    click.echo("\n✅ Optimization Complete!")
+    click.echo(f"  Best Parameters: {best_params}")
+    click.echo(f"  Results saved to data/optimization/best_params_{symbol.replace('/', '_')}.json")
+
+
+@cli.command("tournament-run")
+@click.option("--symbol", default="BTC/USDT", help="Symbol for tournament")
+@click.option("--timeframe", default="1h", help="Timeframe for tournament")
+@click.pass_context
+def tournament_run(ctx: click.Context, symbol: str, timeframe: str) -> None:
+    """Run the model tournament and promote champions."""
+    from nexus_alpha.learning.tournament_engine import TournamentEngine
+    
+    engine = TournamentEngine(symbol=symbol, timeframe=timeframe)
+    click.echo(f"🏟️  Running Tournament for {symbol}...")
+    
+    results = engine.evaluate_candidates()
+    click.echo(f"  Evaluated {len(results)} candidates.")
+    
+    new_champ = engine.promote_new_champion()
+    if new_champ:
+        click.echo(f"  🏆 NEW CHAMPION PROMOTED: {new_champ}")
+    else:
+        click.echo("  ⚖️  No promotion candidate found (Champion retained or no candidates).")
+
+
+@cli.command()
+@click.option("--port", default=8501, help="Backend port")
+def dashboard(port: int):
+    """Launch the NEXUS-ALPHA Dashboard (UI + Backend)."""
+    import subprocess
+    import sys
+    import os
+    
+    logger.info("launching_dashboard", port=port)
+    
+    # 1. Start Backend in background
+    backend_cmd = [sys.executable, "-m", "uvicorn", "dashboard.backend.main:app", "--host", "0.0.0.0", "--port", str(port), "--reload"]
+    subprocess.Popen(backend_cmd)
+    
+    # 2. Start Frontend server in background
+    frontend_port = port + 1
+    frontend_dir = os.path.join(os.getcwd(), "dashboard")
+    frontend_cmd = [sys.executable, "-m", "http.server", str(frontend_port), "--directory", frontend_dir]
+    subprocess.Popen(frontend_cmd)
+    
+    click.echo(f"🚀 NEXUS Dashboard Launched at http://localhost:{frontend_port}")
+    click.echo(f"📡 API Backend running at http://localhost:{port}")
+
+@cli.command()
+@click.option("--symbol", default="BTC/USDT", help="Primary symbol")
+def control(symbol: str):
+    """MASTER COMMAND: Launch the full autonomous trade ecosystem."""
+    import subprocess
+    import sys
+    
+    click.echo(f"🔥 INITIALIZING NEXUS CONTROL: {symbol}")
+    
+    # 1. Dashboard
+    subprocess.Popen([sys.executable, "-m", "nexus_alpha.cli", "dashboard"])
+    
+    # 2. RL Trainer (episodes=100 for safety in master mode)
+    subprocess.Popen([sys.executable, "-m", "nexus_alpha.cli", "train-rl", "--symbol", symbol, "--episodes", "100"])
+    
+    # 3. Walk-forward paper eval
+    subprocess.Popen([sys.executable, "-m", "nexus_alpha.cli", "walk-forward", "--symbol", symbol])
+    
+    click.echo("✅ All systems initialized. Monitor progress at http://localhost:8501")
+
+
+@cli.command()
+@click.option("--symbol", default="BTC/USDT", help="Symbol to optimize")
+@click.option("--interval", default=60, help="Interval in minutes between cycles")
+def god_loop(symbol: str, interval: int):
+    """ACTIVATE GOD-MODE: Start the master autonomous self-improvement loop."""
+    from nexus_alpha.autonomous.god_loop import GodLoop
+    click.echo(f"🔥 ACTIVATING NEXUS GOD-LOOP FOR {symbol}")
+    loop = GodLoop(symbol=symbol, interval_minutes=interval)
+    loop.start()
+
 if __name__ == "__main__":
-    main()
+    cli()

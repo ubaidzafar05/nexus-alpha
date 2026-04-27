@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,10 +12,11 @@ import pandas as pd
 
 from nexus_alpha.agents.tournament import BaseAgent, TournamentOrchestrator
 from nexus_alpha.config import NexusConfig
-from nexus_alpha.logging import get_logger
+from nexus_alpha.log_config import get_logger
 from nexus_alpha.signals.contracts import SignalCandidate, ValidatedSignal
 from nexus_alpha.strategy.evolution import DiscoveredStrategy, StrategyEvolutionEngine
-from nexus_alpha.types import Signal
+from nexus_alpha.agents.evolution import EvolutionaryKernel, RecursiveSpawner
+from nexus_alpha.schema_types import Signal
 
 logger = get_logger(__name__)
 
@@ -100,10 +102,153 @@ class StrategyAgentLifecycle:
             generations=10,
             max_depth=4,
         )
+        self._kernel = EvolutionaryKernel(mutation_rate=0.05)
+        self._spawner = RecursiveSpawner(self._kernel, max_agents=20)
 
     def bootstrap(self) -> None:
-        """Initialize tournament with at least one RL-style policy agent."""
+        """Initialize tournament with a diverse population of microstructure agents."""
+        from nexus_alpha.agents.optimizer import FusionEnsembleAgent
+        from nexus_alpha.agents.risk import TailHedgeAgent
+        
+        # 1. Baseline Champion (Standard Weights)
+        self._tournament.register_agent(FusionEnsembleAgent(agent_id="fusion-champion"))
+        
+        # 2. VPIN Specialist (Biased towards Informed Trading detection)
+        self._tournament.register_agent(
+            FusionEnsembleAgent(
+                agent_id="v6-vpin-aggro",
+                weight_overrides={"vpin": 3.0, "vpin_advanced": 3.0, "ofi_l2": 1.0}
+            )
+        )
+        
+        # 3. Order Flow Specialist (Biased towards immediate imbalance)
+        self._tournament.register_agent(
+            FusionEnsembleAgent(
+                agent_id="v6-ofi-aggro",
+                weight_overrides={"ofi_l2": 3.5, "vpin": 1.0}
+            )
+        )
+        
+        # 4. Balanced Micro-Alpha
+        self._tournament.register_agent(
+            FusionEnsembleAgent(
+                agent_id="v6-micro-fusion",
+                weight_overrides={"vpin": 1.5, "ofi_l2": 1.5, "rsi_7": 0.5}
+            )
+        )
+        
+        # 5. Volatility / Mean-Reversion Hybrid
+        self._tournament.register_agent(
+            FusionEnsembleAgent(
+                agent_id="v6-vol-alpha",
+                symbol="BTCUSDT",
+                cluster_id="layer1",
+                weight_overrides={"bollinger_low": 2.0, "bollinger_high": 2.0, "vpin": 2.0}
+            )
+        )
+        
+        # Keep the proxy for safety/benchmarking
         self._tournament.register_agent(HeuristicRLProxyAgent())
+
+        # ── V7 ULTRA: Leadership Agents (Phase 11) ────────────────────────
+        # ETHUSDT following BTCUSDT
+        self._tournament.register_agent(
+            FusionEnsembleAgent(
+                agent_id="v7-eth-btc-leader",
+                symbol="ETHUSDT",
+                leader_id="BTCUSDT",
+                cluster_id="layer1",
+                weight_overrides={"vpin": 2.0, "ofi_l2": 2.0}
+            )
+        )
+        
+        # SOLUSDT following BTCUSDT
+        self._tournament.register_agent(
+            FusionEnsembleAgent(
+                agent_id="v7-sol-btc-leader",
+                symbol="SOLUSDT",
+                leader_id="BTCUSDT",
+                cluster_id="layer1",
+                weight_overrides={"vpin": 2.0, "ofi_l2": 2.0}
+            )
+        )
+
+    def evolve_swarm(self) -> int:
+        """
+        Trigger the Evolutionary Kernel to refine the agent swarm DNA.
+        """
+        performance = self._tournament.evaluate_all()
+        agents = list(self._tournament.agents.values())
+        mutations = self._kernel.evolve_swarm(agents, performance)
+        
+        if mutations > 0:
+            logger.info("swarm_evolution_complete", mutations=mutations)
+        return mutations
+
+    def bootstrap_regime_variants(self) -> int:
+        """
+        Trigger the Recursive Spawner to expand the ensemble for a new regime.
+        Clones the top-performing agent.
+        """
+        active_agents = len(self._tournament.agents)
+        if active_agents >= self._spawner.max_agents:
+            logger.warning("bootstrap_ignored", reason="population_cap_reached")
+            return 0
+            
+        performance = self._tournament.evaluate_all()
+        if not performance:
+            return 0
+            
+        # Identify the current Champion
+        champion_id = max(performance.items(), key=lambda x: x[1].sharpe_ratio)[0]
+        champion = self._tournament.agents[champion_id]
+        
+        # Spawn 2 variants
+        new_variants = self._spawner.bootstrap_variations(champion, count=2)
+        
+        for variant in new_variants:
+            self._tournament.register_agent(variant)
+            
+        if new_variants:
+            self._tournament.rebalance_capital()
+            logger.info("recursive_bootstrap_completed", n_spawned=len(new_variants))
+            
+        return len(new_variants)
+
+    def symmetrize_cluster(self, cluster_id: str) -> bool:
+        """
+        Autonomously bootstrap a Hedge agent to neutralize directional crowding.
+        V9 Phase 19 logic.
+        """
+        performance = self._tournament.evaluate_all()
+        if not performance:
+            return False
+            
+        # Identify the Champion within the cluster to use as base for the hedge
+        cluster_agents = [aid for aid, a in self._tournament.agents.items() if a.cluster_id == cluster_id]
+        if not cluster_agents:
+            return False
+            
+        # Get top performer from cluster
+        champion_id = max(cluster_agents, key=lambda aid: performance.get(aid, 0.0).sharpe_ratio)
+        champion = self._tournament.agents[champion_id]
+        
+        hedge = self._spawner.spawn_hedge_agent(champion, cluster_id)
+        if hedge:
+            self._tournament.register_agent(hedge)
+            logger.info("autonomic_symmetrization_triggered", cluster=cluster_id, hedge_id=hedge.agent_id)
+            return True
+        return False
+
+        # ── V7 ULTRA: Risk Guardians (Phase 12) ──────────────────────────
+        # Global Tail Protector
+        self._tournament.register_agent(
+            TailHedgeAgent(agent_id="guardian-v7-main", z_threshold=3.5)
+        )
+
+    def update(self, market_data: dict) -> None:
+        """Propagate market updates to the tournament ensemble."""
+        self._tournament.update_agents(market_data)
 
     def evolve_and_register(
         self,

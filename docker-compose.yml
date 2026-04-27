@@ -1,3 +1,5 @@
+name: nexus-alpha
+
 services:
   # ─── Core Data Infrastructure ─────────────────────────────────────────────
   timescaledb:
@@ -52,16 +54,12 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
-      interval: 15s
+      test: ["CMD-SHELL", "/usr/bin/kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
       timeout: 10s
-      retries: 5
+      retries: 10
 
   # ─── FREE LOCAL LLM SERVER — replaces Anthropic Claude + OpenAI ──────────
-  # After first startup: docker compose exec ollama ollama pull qwen3:8b
-  #                      docker compose exec ollama ollama pull deepseek-r1:8b
-  #                      docker compose exec ollama ollama pull nomic-embed-text
-  #                      docker compose exec ollama ollama pull mistral:7b
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
@@ -72,14 +70,14 @@ services:
     deploy:
       resources:
         limits:
-          memory: 9G
+          memory: 6G
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # ─── FREE Web Intelligence Agents — replaces OpenClaw paid backend ─────────
+  # ─── Web Intelligence Agents ──────────────────────────────────────────────
   crawl4ai:
     image: unclecode/crawl4ai:latest
     restart: unless-stopped
@@ -92,7 +90,7 @@ services:
         limits:
           memory: 2G
 
-  # ─── FREE Vector Database — replaces paid vector DB ──────────────────────
+  # ─── Vector Database ──────────────────────────────────────────────────────
   qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
@@ -106,7 +104,7 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.12.2
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - mlflow_data:/mlflow
     depends_on:
@@ -114,7 +112,7 @@ services:
         condition: service_healthy
     command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
 
-  # ─── FREE Trading Engine ──────────────────────────────────────────────────
+  # ─── Trading Engine ──────────────────────────────────────────────────────
   freqtrade:
     image: freqtradeorg/freqtrade:stable
     restart: unless-stopped
@@ -161,7 +159,6 @@ services:
       - prometheus
       - loki
 
-  # ─── Loki — log aggregation — replaces paid log management ───────────────
   loki:
     image: grafana/loki:2.9.0
     restart: unless-stopped
@@ -185,30 +182,31 @@ services:
       ollama:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "8501:8000"
+    volumes:
+      - .:/app
+      - ./data/trade_logs:/app/data/trade_logs
     environment:
+      NEXUS_API_PORT: 8000
       ENVIRONMENT: production
       TRADING_MODE: paper
       LOG_LEVEL: INFO
+      PYTHONUNBUFFERED: "1"
       TIMESCALEDB_URL: postgresql+asyncpg://nexus:${DB_PASSWORD:-nexus_dev}@timescaledb:5432/nexus_alpha
       REDIS_URL: redis://:${REDIS_PASSWORD:-nexus_dev}@redis:6379/0
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       MLFLOW_TRACKING_URI: http://mlflow:5000
-      # Free LLM stack
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_PRIMARY_MODEL: qwen3:8b
       OLLAMA_FAST_MODEL: mistral:7b
       OLLAMA_REASONING_MODEL: deepseek-r1:8b
       OLLAMA_EMBED_MODEL: nomic-embed-text
       GROQ_API_KEY: ${GROQ_API_KEY:-}
-      # Alerts
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      # Free data source keys (all have free tiers)
       CRYPTOPANIC_API_TOKEN: ${CRYPTOPANIC_API_TOKEN:-}
       ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
-      # Vector DB
       QDRANT_URL: http://qdrant:6333
     env_file:
       - .env
